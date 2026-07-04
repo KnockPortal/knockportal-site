@@ -1,0 +1,22 @@
+# ---- secrets (never commit) ----
+.env
+.env*.local
+.env.local
+.env.development.local
+.env.production.local
+
+# ---- dependencies ----
+node_modules/
+
+# ---- next.js build output ----
+.next/
+out/
+next-env.d.ts
+
+# ---- misc build / tooling artifacts ----
+repomix-output.xml
+*.log
+*.tsbuildinfo
+
+# ---- os / editor cruft ----
+.DS_Store

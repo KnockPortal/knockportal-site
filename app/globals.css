@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0F1822;
+  --foreground: #F2F5F7;
+}
+
+body {
+  background: #0F1822;
+  color: #F2F5F7;
+}
+
+@layer base {
+  *:focus-visible {
+    outline: 2px solid #FF6B1A;
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .dotted-bg {
+    background-image: radial-gradient(circle, #33424F 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+}
