@@ -4,8 +4,17 @@ import { supabaseAdmin } from '@/lib/supabase-server'
 
 export const runtime = 'nodejs'
 
-// @ts-ignore — pinned to API version declared at webhook endpoint
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-06-24.dahlia' })
+// Lazy singleton — construct on first request, not at module load. Building the route
+// (Next collects page data by importing this module) must not require STRIPE_SECRET_KEY
+// to be present; a CI build with no secrets would otherwise fail at `new Stripe(undefined)`.
+let _stripe: Stripe | null = null
+function getStripe(): Stripe {
+  if (!_stripe) {
+    // @ts-ignore — pinned to API version declared at webhook endpoint
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-06-24.dahlia' })
+  }
+  return _stripe
+}
 
 type DB = ReturnType<typeof supabaseAdmin>
 
@@ -19,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   let event: Stripe.Event
   try {
-    event = stripe.webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+    event = getStripe().webhooks.constructEvent(rawBody, sig, process.env.STRIPE_WEBHOOK_SECRET!)
   } catch {
     return NextResponse.json({ error: 'Webhook signature verification failed' }, { status: 400 })
   }
@@ -81,11 +90,24 @@ async function dispatch(event: Stripe.Event, db: DB) {
     case 'invoice.payment_failed':
     case 'invoice.payment_succeeded': {
       const inv = event.data.object as Stripe.Invoice
-      const subId = typeof inv.subscription === 'string' ? inv.subscription : inv.subscription?.id
+      const subId = extractInvoiceSubscriptionId(inv)
       if (subId) await syncSubscription(subId, null, db)
       break
     }
   }
+}
+
+// Resolve the subscription id from an invoice across Stripe API-shape changes.
+// 2026-06-24.dahlia: invoice.parent.subscription_details.subscription.
+// Pre-dahlia (replays / older event versions): top-level invoice.subscription.
+// Returns null if neither is present — caller then no-ops instead of throwing.
+function extractInvoiceSubscriptionId(inv: Stripe.Invoice): string | null {
+  const parentSub = inv.parent?.subscription_details?.subscription
+  if (parentSub) return typeof parentSub === 'string' ? parentSub : parentSub.id
+  // Legacy field removed from the type in dahlia — read defensively for replayed events.
+  const legacy = (inv as unknown as { subscription?: string | { id: string } }).subscription
+  if (legacy) return typeof legacy === 'string' ? legacy : legacy.id
+  return null
 }
 
 async function onCheckoutCompleted(session: Stripe.Checkout.Session, db: DB) {
@@ -97,7 +119,7 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session, db: DB) {
   if (!stripeCustomerId || !stripeSubId) return
 
   // Mirror customer — fetch canonical data from Stripe
-  const stripeCust = await stripe.customers.retrieve(stripeCustomerId)
+  const stripeCust = await getStripe().customers.retrieve(stripeCustomerId)
   if (!('deleted' in stripeCust)) {
     await db.from('customers').upsert(
       { stripe_customer_id: stripeCustomerId, email: stripeCust.email, name: stripeCust.name },
@@ -145,7 +167,7 @@ async function syncSubscription(
   customerId: string | null,
   db: DB,
 ) {
-  const sub = await stripe.subscriptions.retrieve(stripeSubId)
+  const sub = await getStripe().subscriptions.retrieve(stripeSubId)
   const priceId = sub.items.data[0]?.price?.id ?? null
 
   // Resolve our internal customer_id if not provided (e.g. out-of-order delivery)
@@ -162,19 +184,36 @@ async function syncSubscription(
 
   const planKey = priceId ? await resolvePlanKey(priceId, db) : null
 
-  await db.from('subscriptions').upsert(
-    {
-      customer_id: resolvedCustomerId,
-      stripe_subscription_id: stripeSubId,
-      stripe_price_id: priceId,
-      plan_key: planKey,
-      status: sub.status,
-      current_period_end: new Date(sub.current_period_end * 1000).toISOString(),
-      cancel_at_period_end: sub.cancel_at_period_end,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'stripe_subscription_id' },
-  )
+  const periodEnd = resolveCurrentPeriodEnd(sub)
+  const periodEndIso = periodEnd != null ? new Date(periodEnd * 1000).toISOString() : null
+
+  // Build the row without current_period_end first. We only write that column when we
+  // could actually resolve it — writing null would clobber a known-good value and drop
+  // the row below the hasMetroAccess `current_period_end > now` gate, locking out an
+  // active subscriber on nothing more than an unexpected payload shape.
+  const row: Record<string, unknown> = {
+    customer_id: resolvedCustomerId,
+    stripe_subscription_id: stripeSubId,
+    stripe_price_id: priceId,
+    plan_key: planKey,
+    status: sub.status,
+    cancel_at_period_end: sub.cancel_at_period_end,
+    updated_at: new Date().toISOString(),
+  }
+  if (periodEndIso) row.current_period_end = periodEndIso
+
+  await db.from('subscriptions').upsert(row, { onConflict: 'stripe_subscription_id' })
+}
+
+// current_period_end moved off Subscription onto each SubscriptionItem in 2026-06-24.dahlia.
+// Prefer the item value; fall back to the legacy top-level field for replayed/older events;
+// null if neither is present (caller then leaves the stored value untouched).
+function resolveCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
+  const fromItem = sub.items?.data?.[0]?.current_period_end
+  if (typeof fromItem === 'number') return fromItem
+  const legacy = (sub as unknown as { current_period_end?: number }).current_period_end
+  if (typeof legacy === 'number') return legacy
+  return null
 }
 
 async function resolvePlanKey(priceId: string, db: DB): Promise<string | null> {

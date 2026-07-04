@@ -6,11 +6,12 @@ import { FormField } from '@/components/forms/FormField'
 import { Consent } from '@/components/forms/Consent'
 import { TRADE_CATEGORIES } from '@/lib/categories'
 
-type FormState = 'idle' | 'check-inbox' | 'confirmed' | 'fallback'
+type FormState = 'idle' | 'submitting' | 'received' | 'error'
 
 export default function RequestPage() {
   const [state, setState] = useState<FormState>('idle')
   const [submittedEmail, setSubmittedEmail] = useState('')
+  const [errorMsg, setErrorMsg] = useState('')
   const [selectedTrade, setSelectedTrade] = useState('roofing')
 
   const selectedCategory = TRADE_CATEGORIES.find((c) => c.slug === selectedTrade)
@@ -19,46 +20,46 @@ export default function RequestPage() {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const data = new FormData(e.currentTarget)
-    const email = data.get('email') as string
+    const email = (data.get('email') as string) ?? ''
     setSubmittedEmail(email)
-    // TODO: POST to /api/request (Supabase + Resend double opt-in)
-    setState('check-inbox')
+    setState('submitting')
+    try {
+      const res = await fetch('/api/request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          category: data.get('category'),
+          metro: data.get('metro'),
+          email,
+          details: data.get('details'),
+          consent: data.get('consent') === 'on',
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json.ok) {
+        setErrorMsg(json.error || 'Something went wrong. Please try again.')
+        setState('error')
+        return
+      }
+      setState('received')
+    } catch {
+      setErrorMsg("We couldn't reach the server. Please try again.")
+      setState('error')
+    }
   }
 
-  if (state === 'check-inbox') {
+  if (state === 'received') {
     return (
       <Section className="min-h-[60vh] flex items-center">
         <div className="max-w-lg mx-auto text-center">
-          <h2 className="font-display text-4xl sm:text-5xl text-hail mb-4">
-            Almost done — check your email.
-          </h2>
+          <h2 className="font-display text-4xl sm:text-5xl text-hail mb-4">Request received.</h2>
           <p className="text-muted text-base leading-relaxed mb-4">
-            We just sent a confirmation link to{' '}
-            <span className="text-hail">{submittedEmail}</span>. Click it to confirm, and we&apos;ll
-            send your contractor list right away.
+            Thanks — we&apos;ve saved your request for{' '}
+            <span className="text-hail">{submittedEmail}</span>. We&apos;re still building out our
+            contractor lists, and we&apos;ll reach out as soon as we have a match in your area.
           </p>
           <p className="text-muted text-sm">
-            Didn&apos;t get it? Check spam, or{' '}
-            <button
-              onClick={() => setState('idle')}
-              className="text-orange underline underline-offset-2 hover:text-orange/80"
-            >
-              resend confirmation
-            </button>
-            .
-          </p>
-        </div>
-      </Section>
-    )
-  }
-
-  if (state === 'confirmed') {
-    return (
-      <Section className="min-h-[60vh] flex items-center">
-        <div className="max-w-lg mx-auto text-center">
-          <h2 className="font-display text-4xl sm:text-5xl text-hail mb-4">You&apos;re confirmed.</h2>
-          <p className="text-muted text-base leading-relaxed">
-            We&apos;re sending your list of contractors now — check your inbox shortly.
+            We won&apos;t email you anything else in the meantime, and your details are never shared.
           </p>
         </div>
       </Section>
@@ -146,11 +147,18 @@ export default function RequestPage() {
               label="I agree to receive a list of contractors for the work I selected, by email."
             />
 
+            {state === 'error' && (
+              <p role="alert" className="text-orange text-sm leading-snug">
+                {errorMsg}
+              </p>
+            )}
+
             <button
               type="submit"
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-hail/60 text-hail font-medium text-sm rounded hover:bg-hail/10 transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2"
+              disabled={state === 'submitting'}
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-hail/60 text-hail font-medium text-sm rounded hover:bg-hail/10 transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Send me contractors
+              {state === 'submitting' ? 'Sending…' : 'Send me contractors'}
             </button>
           </form>
 
