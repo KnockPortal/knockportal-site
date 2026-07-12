@@ -198,7 +198,7 @@ export default function HomePage() {
         <div className="max-w-2xl mx-auto text-center">
           <p className="text-hail text-base leading-relaxed mb-3">
             KnockPortal is operated by{' '}
-            <strong>Abalon Construction Management LLC</strong>, a licensed North Carolina company.
+            <strong>Abalon Construction Management LLC</strong>, registered in North Carolina.
           </p>
           <p className="text-hail text-base leading-relaxed mb-4">
             Built around legal contact channels — public records and your own outreach. We don&apos;t

@@ -6,8 +6,8 @@ export default function AboutPage() {
       <div className="max-w-2xl">
         <h1 className="font-display text-5xl sm:text-6xl text-hail mb-6">About KnockPortal</h1>
         <p className="text-hail text-lg leading-relaxed mb-4">
-          KnockPortal is operated by <strong>Abalon Construction Management LLC</strong>, a licensed
-          North Carolina company based in Raleigh.
+          KnockPortal is operated by <strong>Abalon Construction Management LLC</strong>, registered
+          in North Carolina, based in Raleigh.
         </p>
         <p className="text-muted text-base leading-relaxed mb-4">
           We built KnockPortal because we know how contracting works. Public building-permit records

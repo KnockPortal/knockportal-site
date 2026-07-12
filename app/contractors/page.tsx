@@ -190,7 +190,7 @@ export default function ContractorsPage() {
               num: '04',
               text: 'Build your profile card — it goes into our homeowner dispatch.',
               highlight: false,
-              suffix: '($149)',
+              suffix: '$149 plan',
             },
           ].map(({ num, text, highlight, suffix }) => (
             <div key={num} className="flex items-start gap-8 py-5">

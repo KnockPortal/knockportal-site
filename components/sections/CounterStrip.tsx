@@ -1,5 +1,27 @@
 import { SITE_STATS } from '@/lib/stats'
 
+const MONTHS = [
+  'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+  'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+]
+
+// Strip a leading zero / normalize a raw count like "0919" → "919"
+function formatCount(raw: string) {
+  return String(parseInt(raw, 10))
+}
+
+// "05-15" → "MAY 15"
+function formatPeak(raw: string) {
+  const [mm, dd] = raw.split('-')
+  return `${MONTHS[parseInt(mm, 10) - 1]} ${parseInt(dd, 10)}`
+}
+
+// "+07" → "+7" (keep the sign, drop the leading zero)
+function formatToday(raw: string) {
+  const sign = raw.trim().startsWith('-') ? '-' : '+'
+  return `${sign}${Math.abs(parseInt(raw, 10))}`
+}
+
 export function CounterStrip() {
   return (
     <div className="border-t border-hairline">
@@ -7,16 +29,16 @@ export function CounterStrip() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 font-mono text-[11px]">
             <span>
-              <span className="text-muted">TRACKED · 90D </span>
-              <span className="text-hail">{SITE_STATS.tracked90d}</span>
+              <span className="text-hail">{formatCount(SITE_STATS.tracked90d)} PERMITS</span>
+              <span className="text-muted"> · 90 DAYS</span>
             </span>
             <span>
               <span className="text-muted">PEAK </span>
-              <span className="text-hail">{SITE_STATS.peak}</span>
+              <span className="text-hail">{formatPeak(SITE_STATS.peak)}</span>
             </span>
             <span>
               <span className="text-muted">TODAY </span>
-              <span className="text-orange">{SITE_STATS.today}</span>
+              <span className="text-orange">{formatToday(SITE_STATS.today)}</span>
             </span>
             <span>
               <span className="text-muted">MEDIAN VALUE </span>
