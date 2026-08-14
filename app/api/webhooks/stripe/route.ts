@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { TRADE_CATEGORIES } from '@/lib/categories'
 
 export const runtime = 'nodejs'
+
+// Verticals a checkout may grant. Derived from the shared category vocabulary rather than
+// hardcoded, so flipping a trade live in lib/categories.ts is the only edit needed here.
+const LIVE_TRADE_SLUGS: ReadonlySet<string> = new Set(
+  TRADE_CATEGORIES.filter((c) => c.live).map((c) => c.slug),
+)
 
 // Lazy singleton — construct on first request, not at module load. Building the route
 // (Next collects page data by importing this module) must not require STRIPE_SECRET_KEY
@@ -135,6 +142,15 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session, db: DB) {
 
   await syncSubscription(stripeSubId, customer?.id ?? null, db)
 
+  // Grants below both key off our subscription row — look it up once.
+  const { data: sub } = await db
+    .from('subscriptions')
+    .select('id')
+    .eq('stripe_subscription_id', stripeSubId)
+    .single()
+
+  if (!sub) return
+
   // Associate subscription with SF metro — v1 default (one metro only)
   // TODO multi-metro: derive metro from Payment Link or session.metadata.metro_slug
   const { data: sfMetro } = await db
@@ -144,20 +160,31 @@ async function onCheckoutCompleted(session: Stripe.Checkout.Session, db: DB) {
     .single()
 
   if (sfMetro) {
-    const { data: sub } = await db
-      .from('subscriptions')
-      .select('id')
-      .eq('stripe_subscription_id', stripeSubId)
-      .single()
+    await db
+      .from('subscription_metros')
+      .upsert(
+        { subscription_id: sub.id, metro_id: sfMetro.id },
+        { onConflict: 'subscription_id,metro_id', ignoreDuplicates: true },
+      )
+  }
 
-    if (sub) {
-      await db
-        .from('subscription_metros')
-        .upsert(
-          { subscription_id: sub.id, metro_id: sfMetro.id },
-          { onConflict: 'subscription_id,metro_id', ignoreDuplicates: true },
-        )
-    }
+  // Associate subscription with the trade the buyer picked on the pricing page, carried
+  // through Checkout as client_reference_id. A missing or unrecognized value is logged and
+  // skipped, never thrown: a bad query param must not fail the webhook or roll back the
+  // metro grant above.
+  const vertical = session.client_reference_id
+  if (vertical && LIVE_TRADE_SLUGS.has(vertical)) {
+    await db
+      .from('subscription_verticals')
+      .upsert(
+        { subscription_id: sub.id, vertical },
+        { onConflict: 'subscription_id,vertical', ignoreDuplicates: true },
+      )
+  } else {
+    console.error('[stripe-webhook] checkout session has no valid trade — no vertical granted', {
+      stripeSubscriptionId: stripeSubId,
+      clientReferenceId: session.client_reference_id,
+    })
   }
 }
 

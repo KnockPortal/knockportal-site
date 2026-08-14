@@ -10,6 +10,7 @@ interface PlanCardProps {
   features: string[]
   billing: 'monthly' | 'yearly'
   stripeUrl: string
+  trade: string
   badge?: string
   comingSoon?: boolean
   className?: string
@@ -24,12 +25,17 @@ export function PlanCard({
   features,
   billing,
   stripeUrl,
+  trade,
   badge,
   comingSoon,
   className,
 }: PlanCardProps) {
   const price = billing === 'monthly' ? monthlyPrice : yearlyPrice
   const period = billing === 'monthly' ? '/mo' : '/yr'
+
+  // Carry the buyer's selected trade into Checkout — the webhook reads it back off
+  // session.client_reference_id to grant the matching vertical.
+  const checkoutUrl = `${stripeUrl}?client_reference_id=${encodeURIComponent(trade)}`
 
   return (
     <div className={cn('relative bg-slate border border-hairline rounded-lg p-7 flex flex-col', className)}>
@@ -70,7 +76,7 @@ export function PlanCard({
         </div>
       ) : (
         <a
-          href={stripeUrl}
+          href={checkoutUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="w-full text-center py-3 bg-orange text-ink font-semibold text-sm rounded hover:bg-[#E85D10] transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2 focus-visible:outline-offset-2"

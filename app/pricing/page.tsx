@@ -73,6 +73,7 @@ export default function PricingPage() {
                 ]}
                 billing={billing}
                 stripeUrl={billing === 'monthly' ? STRIPE_LINKS.registry.monthly : STRIPE_LINKS.registry.yearly}
+                trade={trade}
               />
               <PlanCard
                 name="Registry + Presence"
@@ -88,6 +89,7 @@ export default function PricingPage() {
                 ]}
                 billing={billing}
                 stripeUrl={billing === 'monthly' ? STRIPE_LINKS.presence.monthly : STRIPE_LINKS.presence.yearly}
+                trade={trade}
                 badge="Most popular"
               />
             </div>
