@@ -7,7 +7,7 @@ export function RegistryConsole() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
         <span className="text-muted tracking-wide">
-          <span className="text-orange">●</span> INCOMING · LAST 7 DAYS
+          <span className="text-orange">●</span> SAMPLE · JUL 30 — AUG 12
         </span>
         <span className="text-muted tracking-wide">SF · ROOFING+SOLAR</span>
       </div>
@@ -15,7 +15,7 @@ export function RegistryConsole() {
       {/* Column headers */}
       <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-4 py-2 border-b border-hairline">
         <span className="text-muted uppercase tracking-widest text-[10px]">Address (Masked)</span>
-        <span className="text-muted uppercase tracking-widest text-[10px]">Neighborhood</span>
+        <span className="text-muted uppercase tracking-widest text-[10px]">ZIP</span>
         <span className="text-muted uppercase tracking-widest text-[10px]">Value</span>
       </div>
 
@@ -26,7 +26,7 @@ export function RegistryConsole() {
           className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-4 py-2.5 border-b border-hairline last:border-0"
         >
           <span className="text-hail">{permit.address}</span>
-          <span className="text-hail whitespace-nowrap">{permit.neighborhood}</span>
+          <span className="text-hail whitespace-nowrap">{permit.zip}</span>
           <span className="text-orange whitespace-nowrap">{permit.value}</span>
         </div>
       ))}

@@ -16,12 +16,6 @@ function formatPeak(raw: string) {
   return `${MONTHS[parseInt(mm, 10) - 1]} ${parseInt(dd, 10)}`
 }
 
-// "+07" → "+7" (keep the sign, drop the leading zero)
-function formatToday(raw: string) {
-  const sign = raw.trim().startsWith('-') ? '-' : '+'
-  return `${sign}${Math.abs(parseInt(raw, 10))}`
-}
-
 export function CounterStrip() {
   return (
     <div className="border-t border-hairline">
@@ -30,15 +24,11 @@ export function CounterStrip() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 font-mono text-[11px]">
             <span>
               <span className="text-hail">{formatCount(SITE_STATS.tracked90d)} PERMITS</span>
-              <span className="text-muted"> · 90 DAYS</span>
+              <span className="text-muted"> · 90 DAYS TO JUN 30</span>
             </span>
             <span>
               <span className="text-muted">PEAK </span>
               <span className="text-hail">{formatPeak(SITE_STATS.peak)}</span>
-            </span>
-            <span>
-              <span className="text-muted">TODAY </span>
-              <span className="text-orange">{formatToday(SITE_STATS.today)}</span>
             </span>
             <span>
               <span className="text-muted">MEDIAN VALUE </span>

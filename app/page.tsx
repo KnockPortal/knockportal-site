@@ -92,17 +92,17 @@ export default function HomePage() {
       {/* ── Block 3: Registry teaser ── */}
       <Section>
         <p className="font-mono text-[11px] text-muted uppercase tracking-widest mb-4">
-          San Francisco · This week
+          San Francisco · recent issued permits
         </p>
         <h2 className="font-display text-3xl sm:text-4xl text-hail mb-8">
-          A live sample from this week&apos;s San Francisco permits:
+          A sample of recent San Francisco permits. Subscribers get the full addresses, daily.
         </h2>
 
         <div className="overflow-x-auto rounded-lg border border-hairline mb-6">
           <div className="bg-slate font-mono text-xs min-w-[640px]">
             {/* Column headers */}
             <div className="grid grid-cols-[1fr_160px_100px_100px] gap-x-4 px-5 py-3 border-b border-hairline">
-              {['Address (Masked)', 'Neighborhood', 'Job Value', 'Issued'].map((h) => (
+              {['Address (Masked)', 'ZIP', 'Job Value', 'Issued'].map((h) => (
                 <span key={h} className="text-muted uppercase tracking-widest text-[10px]">{h}</span>
               ))}
             </div>
@@ -110,7 +110,7 @@ export default function HomePage() {
             {SAMPLE_PERMITS.map((permit, i) => (
               <div key={i} className="grid grid-cols-[1fr_160px_100px_100px] gap-x-4 px-5 py-3 border-b border-hairline last:border-0">
                 <span className="text-hail">{permit.address}</span>
-                <span className="text-hail">{permit.neighborhood}</span>
+                <span className="text-hail">{permit.zip}</span>
                 <span className="text-orange">{permit.value}</span>
                 <span className="text-muted">{permit.issued}</span>
               </div>
