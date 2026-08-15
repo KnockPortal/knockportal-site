@@ -27,7 +27,7 @@ const CONTRACTOR_STEPS = [
 const INBOX_ITEMS = [
   'Full street address of every fresh permit',
   'Job value and issued date',
-  'ZIP code, so you can plan your route',
+  'Neighborhood and ZIP, so you can plan your route',
   'Your trade only — roofing or solar, no noise',
 ]
 
