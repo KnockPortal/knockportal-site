@@ -15,7 +15,7 @@ const CONTRACTOR_STEPS = [
   {
     num: '03',
     title: 'Receive.',
-    text: 'Every morning, fresh permits land in your inbox: full street address, job value, issued date, neighborhood.',
+    text: 'Every morning, fresh permits land in your inbox: full street address, job value, issued date, ZIP.',
   },
   {
     num: '04',
@@ -27,7 +27,7 @@ const CONTRACTOR_STEPS = [
 const INBOX_ITEMS = [
   'Full street address of every fresh permit',
   'Job value and issued date',
-  'Neighborhood, so you can plan your route',
+  'ZIP code, so you can plan your route',
   'Your trade only — roofing or solar, no noise',
 ]
 

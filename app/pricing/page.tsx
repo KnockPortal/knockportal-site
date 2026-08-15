@@ -68,7 +68,7 @@ export default function PricingPage() {
                   'Daily email of fresh permits — your category, your metro',
                   'Full street address on every permit',
                   'Job value and issued date on every permit',
-                  'Filter by your neighborhoods and zones',
+                  'ZIP code on every permit, for route planning',
                   'Cancel anytime',
                 ]}
                 billing={billing}
