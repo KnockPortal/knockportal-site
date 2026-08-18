@@ -44,11 +44,11 @@ export default function ContractorsPage() {
                 <span className="text-orange">●</span> FOR CONTRACTORS
               </p>
               <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl text-hail leading-[1.0] mb-6">
-                The permit lands. You knock first.
+                The permit lands. You see the whole street.
               </h1>
               <p className="text-hail/80 text-lg leading-relaxed mb-8 max-w-lg">
                 Every morning, KnockPortal emails you the fresh permits in your trade and market —
-                full address, job value, issued date. While your competitors buy recycled leads,
+                full address, issued date, ZIP. While your competitors buy recycled leads,
                 you&apos;re already at the door.
               </p>
               <Link
@@ -114,7 +114,7 @@ export default function ContractorsPage() {
               <span className="text-orange font-mono text-base font-medium">$99/mo</span>
             </h3>
             <p className="text-muted text-sm leading-relaxed">
-              Daily email of fresh permits in your category and metro. Full address and job value on
+              Daily email of fresh permits in your category and metro. Full address and issued date on
               every line.
             </p>
           </div>
