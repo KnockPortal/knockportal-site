@@ -15,19 +15,19 @@ const CONTRACTOR_STEPS = [
   {
     num: '03',
     title: 'Receive.',
-    text: 'Every morning, fresh permits land in your inbox: full street address, job value, issued date, ZIP.',
+    text: 'Every morning, fresh permits land in your inbox: full street address, issued date and ZIP.',
   },
   {
     num: '04',
-    title: 'Knock.',
-    text: 'The permit is public — you just see it first. Knock, mail, or call on your own terms.',
+    title: 'Work the street.',
+    text: 'A permit means that job is already sold — the value is in the block around it. Those houses are the same age and have taken the same weather, and their owners just watched a crew work down the street.',
   },
 ]
 
 const INBOX_ITEMS = [
   'Full street address of every fresh permit',
-  'Job value and issued date',
-  'Neighborhood and ZIP, so you can plan your route',
+  'Issued date and ZIP, so you can plan your route',
+  'Where permits are landing close together — the blocks worth a morning',
   'Your trade only — roofing or solar, no noise',
 ]
 
@@ -56,7 +56,7 @@ export default function HowItWorksPage() {
             How it works
           </h1>
           <p className="text-hail/80 text-lg leading-relaxed">
-            From public record to your inbox — every morning.
+            From public record to the street you work — every morning.
           </p>
         </div>
       </Section>
@@ -87,8 +87,11 @@ export default function HowItWorksPage() {
         </h2>
         <p className="text-hail/80 text-lg leading-relaxed max-w-2xl">
           Every permit we send comes from official public building-permit records. We pull them
-          daily, filter them to your trade, and send only what&apos;s fresh. No scraping gray
-          sources, no recycled lead lists — public records, verified daily.
+          several times a day, filter them to your trade, and send only what&apos;s fresh. No
+          scraping gray sources, no recycled lead lists — public records, checked daily.
+          We watch the sources themselves, too: on July 1 San Francisco quietly moved roofing
+          permits to a new system, and anyone still reading the old feed saw the market drop 91%.
+          It had not. July was the strongest month of the year.
         </p>
       </Section>
 
@@ -131,7 +134,7 @@ export default function HowItWorksPage() {
       <Section elevated>
         <div className="text-center max-w-2xl mx-auto">
           <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl text-hail mb-8">
-            See it in your inbox tomorrow morning.
+            See which streets are going, tomorrow morning.
           </h2>
           <Link
             href="/pricing"

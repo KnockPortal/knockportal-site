@@ -23,16 +23,16 @@ export function CounterStrip() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 font-mono text-[11px]">
             <span>
-              <span className="text-hail">{formatCount(SITE_STATS.tracked90d)} PERMITS</span>
-              <span className="text-muted"> · 90 DAYS TO JUN 30</span>
+              <span className="text-hail">{formatCount(SITE_STATS.tracked30d)} ROOFS</span>
+              <span className="text-muted"> · {SITE_STATS.windowLabel}</span>
             </span>
             <span>
               <span className="text-muted">PEAK </span>
               <span className="text-hail">{formatPeak(SITE_STATS.peak)}</span>
             </span>
             <span>
-              <span className="text-muted">MEDIAN VALUE </span>
-              <span className="text-hail">{SITE_STATS.medianValue}</span>
+              <span className="text-muted">BUSIEST ZIP </span>
+              <span className="text-hail">{SITE_STATS.busiestZip}</span>
             </span>
           </div>
           <span className="font-mono text-[11px] text-muted">

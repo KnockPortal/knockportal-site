@@ -5,9 +5,9 @@ import { StickyHeader } from '@/components/layout/StickyHeader'
 import { Footer } from '@/components/layout/Footer'
 
 export const metadata: Metadata = {
-  title: 'KnockPortal — Fresh local permits before your competitors',
+  title: 'KnockPortal — where San Francisco roofing permits are clustering',
   description:
-    'KnockPortal turns public building-permit data into a daily list of fresh jobs in your area — full address, job value, issued date. Be the first contractor at the door.',
+    'KnockPortal reads San Francisco building-permit records daily and shows where roofing work is clustering — the streets being re-roofed right now, and the houses on those blocks that are not.',
   icons: {
     icon: [
       { url: '/logo/logo-favicon-adaptive.svg', type: 'image/svg+xml' },

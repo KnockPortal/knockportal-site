@@ -7,7 +7,7 @@ export function RegistryConsole() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
         <span className="text-muted tracking-wide">
-          <span className="text-orange">●</span> SAMPLE · JUL 30 — AUG 12
+          <span className="text-orange">●</span> SAMPLE · AUG 11 — AUG 17
         </span>
         <span className="text-muted tracking-wide">SF · ROOFING+SOLAR</span>
       </div>
@@ -16,7 +16,7 @@ export function RegistryConsole() {
       <div className="grid grid-cols-[1fr_auto_auto] gap-x-6 px-4 py-2 border-b border-hairline">
         <span className="text-muted uppercase tracking-widest text-[10px]">Address (Masked)</span>
         <span className="text-muted uppercase tracking-widest text-[10px]">ZIP</span>
-        <span className="text-muted uppercase tracking-widest text-[10px]">Value</span>
+        <span className="text-muted uppercase tracking-widest text-[10px]">Issued</span>
       </div>
 
       {/* Data rows */}
@@ -27,13 +27,13 @@ export function RegistryConsole() {
         >
           <span className="text-hail">{permit.address}</span>
           <span className="text-hail whitespace-nowrap">{permit.zip}</span>
-          <span className="text-orange whitespace-nowrap">{permit.value}</span>
+          <span className="text-orange whitespace-nowrap">{permit.issued}</span>
         </div>
       ))}
 
       {/* Footer */}
       <div className="flex items-center justify-between px-4 py-3 border-t border-hairline bg-ink/20">
-        <span className="text-muted text-[11px]">Full address &amp; value, every morning.</span>
+        <span className="text-muted text-[11px]">Full addresses, every morning.</span>
         <Link
           href="/pricing"
           className="text-orange hover:text-orange/80 transition-colors duration-150 text-[11px]"

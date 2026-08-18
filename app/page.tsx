@@ -21,11 +21,12 @@ export default function HomePage() {
                 <span className="text-orange">●</span> PERMIT INTELLIGENCE — SAN FRANCISCO
               </p>
               <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl text-hail leading-[1.0] mb-6">
-                Fresh local permits. Before your competitors knock.
+                Roofs go in streets, not one at a time.
               </h1>
               <p className="text-hail/80 text-lg leading-relaxed mb-8 max-w-lg">
-                KnockPortal turns public building-permit data into a daily list of fresh jobs in your
-                area — full address, job value, issued date. Be the first contractor at the door.
+                KnockPortal reads San Francisco permit records every day and finds where roofing
+                work is grouping — the streets going now, and the houses on those blocks that
+                have not been re-roofed in years.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 mb-6">
                 <Link
@@ -74,8 +75,8 @@ export default function HomePage() {
             },
             {
               icon: <FileCheck size={22} className="text-muted" />,
-              bold: 'A permit means the budget is approved',
-              rest: ' and the job is real.',
+              bold: 'A permit means a roof on that block just failed.',
+              rest: ' Houses built together wear out together.',
             },
           ].map(({ icon, bold, rest }, i) => (
             <div key={i}>
@@ -102,7 +103,7 @@ export default function HomePage() {
           <div className="bg-slate font-mono text-xs min-w-[640px]">
             {/* Column headers */}
             <div className="grid grid-cols-[1fr_160px_100px_100px] gap-x-4 px-5 py-3 border-b border-hairline">
-              {['Address (Masked)', 'ZIP', 'Job Value', 'Issued'].map((h) => (
+              {['Address (Masked)', 'ZIP', 'Trade', 'Issued'].map((h) => (
                 <span key={h} className="text-muted uppercase tracking-widest text-[10px]">{h}</span>
               ))}
             </div>
@@ -111,7 +112,7 @@ export default function HomePage() {
               <div key={i} className="grid grid-cols-[1fr_160px_100px_100px] gap-x-4 px-5 py-3 border-b border-hairline last:border-0">
                 <span className="text-hail">{permit.address}</span>
                 <span className="text-hail">{permit.zip}</span>
-                <span className="text-orange">{permit.value}</span>
+                <span className="text-orange">{permit.trade}</span>
                 <span className="text-muted">{permit.issued}</span>
               </div>
             ))}
@@ -119,7 +120,8 @@ export default function HomePage() {
         </div>
 
         <p className="text-muted text-sm mb-4">
-          Subscribers get the full address and value on every permit, every morning.
+          Subscribers get the full address on every permit, every morning — plus the blocks where
+          permits are landing close together.
         </p>
         <Link
           href="/pricing"
@@ -140,8 +142,8 @@ export default function HomePage() {
               For Contractors
             </p>
             <p className="text-hail text-base leading-relaxed mb-6">
-              Get the daily registry. Knock first. Optionally, get your profile in front of homeowners
-              who are looking.
+              Get the daily registry and see which streets are going. Optionally, get your profile
+              in front of homeowners who are looking.
             </p>
             <Link
               href="/pricing"
@@ -173,9 +175,9 @@ export default function HomePage() {
         <h2 className="font-display text-3xl sm:text-4xl text-hail mb-10">How it works</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
           {[
-            'We pull fresh permits daily from public records.',
-            'You get them by email every morning — address, value, date.',
-            'You knock before anyone else does.',
+            'We pull San Francisco permits from public records, several times a day.',
+            'We find where they group — permits landing within a few blocks and a few weeks of each other.',
+            'You work the whole street: the roofs already going, and the ones on those blocks that are not.',
           ].map((text, i) => (
             <div key={i} className={`pt-5 border-t-2 ${i === 0 ? 'border-orange' : 'border-hairline'}`}>
               <p className="font-mono text-muted text-2xl mb-4">0{i + 1}</p>
@@ -214,7 +216,7 @@ export default function HomePage() {
       <Section>
         <div className="text-center max-w-2xl mx-auto">
           <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl text-hail mb-8">
-            Stop chasing leads. Start knocking on real jobs.
+            Stop guessing the street. Start with the one already going.
           </h2>
           <Link
             href="/pricing"
