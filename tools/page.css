@@ -1,0 +1,338 @@
+/* KnockPortal — per-contractor canvassing page
+   ============================================================================
+   One page, two jobs. The mode buttons flip the whole composition:
+
+     WALK      list is the work surface — wide pane, big type, sticky street
+               headers, walking order. Map demoted to a locator.
+     POSTCARDS satellite is the work surface — map takes the width, the pane
+               narrows to a running tally of picked roofs.
+
+   Mode state lives in aria-selected on #tab-walk / #tab-mail (set by page.js);
+   the layout reads it with :has() — no JS was changed.
+
+   Hooks page.js depends on (ids + emitted classes) are untouched:
+   #map #pick #tab-walk #tab-mail #pane #count #clear #dl
+   .grp .st .row .row.pick .row.on .z .hint
+   ========================================================================= */
+
+/* ------------------------------------------------------------------ fonts */
+@font-face{font-family:'Barlow';font-weight:400;font-display:swap;
+  src:url('fonts/Barlow-Regular.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:500;font-display:swap;
+  src:url('fonts/Barlow-Medium.woff2') format('woff2')}
+@font-face{font-family:'Barlow';font-weight:600;font-display:swap;
+  src:url('fonts/Barlow-SemiBold.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:500;font-display:swap;
+  src:url('fonts/BarlowCondensed-Medium.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:600;font-display:swap;
+  src:url('fonts/BarlowCondensed-SemiBold.woff2') format('woff2')}
+@font-face{font-family:'Barlow Condensed';font-weight:700;font-display:swap;
+  src:url('fonts/BarlowCondensed-Bold.woff2') format('woff2')}
+
+/* ----------------------------------------------------------------- tokens */
+:root{
+  --ink:#0F1822;        /* page ground            */
+  --well:#0B131C;       /* map well, deepest      */
+  --slate:#1B2733;      /* panel                  */
+  --slate-2:#233140;    /* raised: active tab, hover */
+  --line:#33424F;       /* hairline               */
+  --mute:#93A3B2;       /* secondary text         */
+  --lede:#C6D1DB;       /* readable body on ink   */
+  --paper:#F2F5F7;      /* primary text           */
+  --orange:#FF6B1A;     /* fresh permit · primary action */
+  --orange-press:#E85D10;
+  --blue:#5FB0E8;       /* no permit on record    */
+  --green:#4ED08A;      /* selected for postcards (matches map) */
+  --grey:#6B7C8C;       /* already reroofed       */
+  --cond:'Barlow Condensed', Barlow, sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; color:var(--paper);
+  background:var(--ink)
+    radial-gradient(rgba(242,245,247,.035) 1px, transparent 1.2px);
+  background-size:auto, 24px 24px;
+  font:16px/1.5 Barlow, system-ui, sans-serif;
+}
+.shell{max-width:1760px;margin:0 auto}
+a{color:var(--blue)}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--orange);outline-offset:2px;border-radius:4px}
+
+/* ------------------------------------------------------------- app frame */
+.screen{display:flex;flex-direction:column;height:100svh;min-height:600px}
+.top,.controls{flex:none}
+
+/* ----------------------------------------------------------------- header */
+.top{padding:20px 28px 14px}
+.topline{display:flex;justify-content:space-between;align-items:baseline;gap:16px}
+.built{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.2em}
+.wordmark{font:700 19px/1 var(--cond);letter-spacing:.01em;color:var(--paper);white-space:nowrap}
+.wordmark .wm-o{color:var(--orange)}
+h1{margin:5px 0 3px;font:700 clamp(30px,3.6vw,46px)/1.04 var(--cond);letter-spacing:.01em}
+h1 em{font-style:normal;color:var(--orange)}
+.dateline{font:600 13px/1.4 var(--cond);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.lede{margin:10px 0 0;color:var(--lede);font-size:15px;line-height:1.5;max-width:68ch}
+.lede b{color:var(--paper);font-weight:600}
+
+/* --------------------------------------------------------------- controls */
+.controls{
+  position:sticky;top:0;z-index:30;
+  display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:14px;align-items:end;
+  padding:14px 28px;background:rgba(15,24,34,.92);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field-label{font:600 11px/1 var(--cond);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
+select#pick{
+  appearance:none;-webkit-appearance:none;width:100%;
+  background:var(--slate) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23FF6B1A' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;
+  color:var(--paper);border:1px solid var(--line);border-radius:8px;
+  padding:11px 38px 11px 14px;
+  font:600 17px/1.2 var(--cond);letter-spacing:.02em;
+  text-overflow:ellipsis;white-space:nowrap;overflow:hidden;cursor:pointer;
+}
+select#pick:hover{border-color:#46586A}
+select#pick option{font:15px Barlow;background:var(--slate);color:var(--paper)}
+
+.tabs{display:flex;gap:8px}
+.tab{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  min-width:190px;padding:9px 16px 10px;
+  background:transparent;border:1px solid var(--line);border-radius:8px;
+  color:var(--mute);cursor:pointer;text-align:left;
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.tab:hover{background:rgba(35,49,64,.6)}
+.tab-t{font:600 16px/1.2 var(--cond);letter-spacing:.06em;text-transform:uppercase}
+.tab-s{font:400 12.5px/1.3 Barlow;letter-spacing:0}
+.tab[aria-selected=true]{
+  background:var(--slate-2);border-color:#4A5D70;color:var(--paper);
+  box-shadow:inset 0 -2px 0 var(--orange);
+}
+.tab[aria-selected=true] .tab-s{color:var(--mute)}
+
+/* ------------------------------------------------------------------ stage */
+.stage{
+  display:grid;grid-template-columns:minmax(0,1fr) var(--panel-w,620px);
+  flex:1;min-height:0;
+  border-bottom:1px solid var(--line);
+}
+/* walk (default): the list is the work surface */
+.stage{--panel-w:620px}
+/* postcards: the satellite is the work surface */
+body:has(#tab-mail[aria-selected=true]) .stage{--panel-w:360px}
+
+.maparea{position:relative;min-width:0;background:var(--well)}
+#map{position:absolute;inset:0}
+/* demote the map a notch while walking — it is a locator, not the job */
+body:has(#tab-walk[aria-selected=true]) .maparea::after{
+  content:'';position:absolute;inset:0;pointer-events:none;
+  background:rgba(15,24,34,.18);
+}
+
+.legend{
+  position:absolute;left:14px;bottom:14px;z-index:5;
+  display:flex;flex-direction:column;gap:6px;pointer-events:none;
+}
+.legend span{
+  display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
+  background:rgba(15,24,34,.82);border:1px solid rgba(51,66,79,.8);border-radius:6px;
+  padding:5px 10px;font-size:12.5px;color:var(--lede);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+}
+.legend i{width:10px;height:10px;border-radius:50%;flex:none}
+.lg-permit{background:var(--orange);box-shadow:0 0 0 2px #fff}
+.lg-open{background:var(--blue)}
+.lg-sel{background:var(--green);box-shadow:0 0 0 2px #fff}
+/* the two history steps are drawn as crosses on the map, so the legend shows a
+   cross too — a dot here would promise a marker the map never draws */
+.legend i.lg-x{
+  width:12px;height:12px;border-radius:0;background:none;box-shadow:none;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:700 15px/1 system-ui,sans-serif;
+}
+/* the map gives both crosses a white halo; the chip sits on a dark plate, so
+   stacked white shadows stand in for it — otherwise the dark step vanishes */
+.lg-x.lg-recent{color:#FF8C42}
+.lg-x.lg-done{color:#243240}
+.legend i.lg-x{text-shadow:0 0 2px #fff,0 0 2px #fff,0 0 3px #fff}
+.legend i.lg-x::before{content:'\2715'}
+
+/* ------------------------------------------------------------------ panel */
+#panel{
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  background:var(--slate);border-left:1px solid var(--line);
+}
+.pane{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 0 8px}
+
+.hint{
+  margin:0;padding:14px 22px;color:var(--mute);font-size:13.5px;line-height:1.5;
+  border-bottom:1px solid rgba(51,66,79,.5);
+}
+
+/* group bands: fresh-permit zone first, marked with the permit orange */
+.grp{
+  padding:16px 22px 6px;color:var(--mute);
+  font:600 12px/1 var(--cond);letter-spacing:.18em;text-transform:uppercase;
+}
+.pane .grp:first-of-type{color:var(--orange)}
+.pane .grp:first-of-type::before{
+  content:'';display:inline-block;width:8px;height:8px;border-radius:50%;
+  background:var(--orange);margin-right:9px;vertical-align:1px;
+}
+
+/* street headers: the walking unit — sticky while the street scrolls */
+.st{
+  position:sticky;top:0;z-index:3;
+  display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  padding:10px 22px 8px;background:var(--slate);
+  border-bottom:1px solid var(--line);
+  font:600 16px/1.1 var(--cond);letter-spacing:.1em;text-transform:uppercase;color:var(--paper);
+}
+.st span{
+  font:600 12px/1 var(--cond);letter-spacing:.06em;color:var(--mute);
+  border:1px solid var(--line);border-radius:999px;padding:3px 9px 4px;
+}
+
+/* address rows */
+.row{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 22px;border-bottom:1px solid rgba(51,66,79,.45);
+  font-size:16.5px;line-height:1.25;
+}
+.row b{font-weight:600;flex:1;letter-spacing:.01em}
+.row .z{color:var(--mute);font-size:12.5px;white-space:nowrap}
+
+/* postcards mode: rows become pickable — give them a real checkbox affordance */
+.row.pick{cursor:pointer;transition:background .12s ease}
+.row.pick:hover{background:rgba(35,49,64,.55)}
+.row.pick::before{
+  content:'';flex:none;width:19px;height:19px;border-radius:5px;
+  border:1.5px solid var(--line);background:transparent;
+  transition:background .12s ease,border-color .12s ease;
+}
+.row.on{background:rgba(78,208,138,.12)}
+.row.on:hover{background:rgba(78,208,138,.18)}
+.row.on::before{
+  border-color:var(--green);background:var(--green)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='9'%3E%3Cpath d='M1 4.5l3 3 6-7' fill='none' stroke='%230F1822' stroke-width='2.2'/%3E%3C/svg%3E") no-repeat center;
+}
+/* walk mode rows are compact: no checkbox column, tighter rhythm */
+body:has(#tab-walk[aria-selected=true]) .row{padding:9px 22px}
+
+/* ------------------------------------------------------------------- foot */
+.foot{
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding:14px 22px;border-top:1px solid var(--line);background:var(--slate);
+}
+.count{flex:1;font-size:14px;color:var(--mute)}
+.count b{font:700 24px/1 var(--cond);color:var(--paper);margin-right:2px;vertical-align:-1px}
+button.go{
+  background:var(--orange);color:#12100E;border:0;border-radius:8px;
+  padding:12px 18px;font:600 15px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;transition:background .15s ease;
+}
+button.go:hover{background:var(--orange-press)}
+button.go[disabled]{background:var(--line);color:var(--mute);cursor:default}
+button.ghost{
+  background:none;border:1px solid var(--line);color:var(--paper);border-radius:8px;
+  padding:11px 14px;font:600 13px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+}
+button.ghost:hover{border-color:#4A5D70}
+
+/* ---------------------------------------------------------------- endnote */
+.endnote{padding:22px 28px 40px;max-width:92ch}
+.note{margin:0 0 12px;color:var(--mute);font-size:13.5px;line-height:1.6}
+.atcost{margin:0 0 10px;color:var(--lede);font-size:14.5px;line-height:1.55;font-weight:500}
+.provenance{margin:0;font:500 12px/1 var(--cond);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+
+/* -------------------------------------------------------------- map extras */
+.pop{font:14px Barlow;color:var(--paper)}
+.pop b{display:block;font-size:15px;margin-bottom:3px}
+.pop .m{color:var(--mute);font-size:13px;margin-bottom:6px}
+.mapboxgl-popup-content{background:var(--slate);border:1px solid var(--line);border-radius:8px}
+.mapboxgl-popup-tip{border-top-color:var(--slate);border-bottom-color:var(--slate)}
+.mapboxgl-popup-close-button{color:var(--mute);font-size:18px}
+
+/* ----------------------------------------------------------------- mobile */
+@media(max-width:920px){
+  .top{padding:18px 16px 12px}
+  .dateline{font-size:11.5px;letter-spacing:.1em}
+  .lede{font-size:14.5px}
+  .controls{position:static;grid-template-columns:1fr;gap:10px;padding:12px 18px;align-items:stretch}
+  .screen{display:block;height:auto;min-height:0}
+  .tabs{width:100%}
+  .tab{flex:1;min-width:0}
+  .tab-s{font-size:12px}
+
+  .stage{display:block;height:auto;border-bottom:0}
+  .maparea{position:relative;height:46vh;min-height:300px}
+  /* walking happens on foot, not on a map — give the phone the list */
+  body:has(#tab-walk[aria-selected=true]) .maparea{display:none}
+  .legend span{font-size:11.5px;padding:4px 8px}
+
+  #panel{display:block;overflow:visible;border-left:0;border-top:1px solid var(--line)}
+  .pane{display:block;overflow:visible}  /* the page scrolls, not a nested box */
+  .st{top:0}
+  .row{padding:12px 18px;font-size:18px}
+  .row .z{font-size:12px}
+  .grp,.hint{padding-left:18px;padding-right:18px}
+  .st{padding-left:18px;padding-right:18px}
+  .foot{position:sticky;bottom:0;z-index:20;box-shadow:0 -8px 24px rgba(0,0,0,.35);
+        padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+  .foot .go{flex:1 1 100%;padding:14px 18px;font-size:16px}   /* thumb bar */
+  .endnote{padding:20px 18px 120px}
+}
+
+/* ------------------------------------------------------------------ print */
+@media print{
+  body{background:#fff;color:#000;font-size:12.5px}
+  .controls,.maparea,.foot,.wordmark,.lede{display:none}
+  .top{padding:0 0 10px}
+  .built,.dateline{color:#000}
+  h1{font-size:26pt}
+  h1 em{color:#000}
+  .stage{display:block;height:auto;border:0}
+  #panel{display:block;background:#fff;border:0;overflow:visible}
+  .pane{overflow:visible;padding:0}
+  .hint{color:#333;border-color:#ccc;padding:8px 0}
+  .grp{color:#000;padding:12px 0 4px}
+  .pane .grp:first-of-type{color:#000}
+  .pane .grp:first-of-type::before{background:#000}
+  .st{position:static;background:#fff;color:#000;border-color:#000;padding:8px 0 4px}
+  .st span{color:#333}
+  .row{padding:5px 0;border-color:#ddd;color:#000;break-inside:avoid;font-size:12.5px}
+  .row .z{color:#333}
+  .row.pick::before{border-color:#999}
+  .row.on::before{background:#000;border-color:#000}
+  .endnote{padding:14px 0 0;max-width:none}
+  .note,.atcost,.provenance{color:#000}
+}
+
+/* --------------------------------------------------------------- fallback */
+/* If :has() is unavailable, the default (walk) layout applies to both modes —
+   the page stays fully usable, only the mode-dependent emphasis is lost. */
+@media(prefers-reduced-motion:reduce){
+  *{transition:none !important}
+}
+
+/* ------------------------------------------------- postcard count control */
+.mailn{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:14px 18px 12px;border-bottom:1px solid var(--line);
+}
+.mailn label{
+  font:600 12px/1 var(--cond);letter-spacing:.16em;text-transform:uppercase;color:var(--mute);
+}
+.mailn input{
+  width:84px;padding:7px 9px;font:600 17px/1 var(--cond);letter-spacing:.02em;
+  color:var(--paper);background:var(--slate-2);
+  border:1px solid var(--line);border-radius:6px;
+}
+.mailn input:focus{outline:2px solid var(--orange);outline-offset:1px}
+.mailn-note{font-size:12.5px;color:var(--mute);flex:1;min-width:150px}
+@media(max-width:920px){ .mailn{padding:12px 18px 10px} }
+@media print{ .mailn{display:none} }

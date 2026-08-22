@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>__COMPANY__ — roofing clusters in San Francisco, __WINDOW__</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet">
+<link href="/sf/page.css?v=__BUILD__" rel="stylesheet">
+</head>
+<body>
+
+<div class="shell">
+<div class="screen">
+
+<header class="top">
+  <div class="topline">
+    <div class="built">Built for</div>
+    <div class="wordmark" aria-label="KnockPortal"><span>Knock</span><span class="wm-o">Portal</span></div>
+  </div>
+  <h1><em>__COMPANY__</em></h1>
+  <div class="dateline">Roofing permits &middot; San Francisco &middot; __WINDOW__</div>
+  <p class="lede">This page groups <b>__PERMITS__ roofing permits</b> from that window into
+     <b>__CLUSTERS__ clusters</b> and lists the neighbouring houses with no qualifying
+     roofing permit on record &mdash; that is where the work is. Pick a cluster, then walk it or mail it.</p>
+</header>
+
+<div class="controls">
+  <label class="field">
+    <span class="field-label">Cluster</span>
+    <select id="pick" aria-label="Neighbourhood and cluster"></select>
+  </label>
+  <div class="tabs" role="tablist" aria-label="How you want to work the cluster">
+    <button class="tab" id="tab-walk" role="tab" aria-selected="false">
+      <span class="tab-t">Walk the block</span>
+      <span class="tab-s">print the list, knock in order</span>
+    </button>
+    <button class="tab" id="tab-mail" role="tab" aria-selected="true">
+      <span class="tab-t">Postcards</span>
+      <span class="tab-s">pick roofs off the satellite</span>
+    </button>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="maparea">
+    <div id="map"></div>
+    <div class="legend">
+      <span><i class="lg-permit"></i>roofing permit issued __WINDOW_SHORT__</span>
+      <span><i class="lg-open"></i>no qualifying roofing permit in __YEARS__ years of public records</span>
+      <span><i class="lg-sel"></i>picked for this mailing</span>
+      <span><i class="lg-x lg-recent"></i>reroofed since __RECENT_SINCE_LABEL__</span>
+      <span><i class="lg-x lg-done"></i>reroofed earlier, within __YEARS__ years</span>
+    </div>
+  </div>
+
+  <aside id="panel">
+    <div class="pane" id="pane"></div>
+    <div class="foot">
+      <div class="count" id="count"></div>
+      <button class="ghost" id="clear" hidden>Clear</button>
+      <button class="go" id="dl">Download</button>
+    </div>
+  </aside>
+</div>
+</div><!-- /.screen -->
+
+<footer class="endnote">
+  <p class="note">
+    A blue house is one with no qualifying roofing permit found in __YEARS__ years of available
+    public records &mdash; nothing in the city&rsquo;s permit history for that address. Roofs do get
+    replaced without a permit, before the digital record starts, or filed under another category
+    &mdash; so treat this as a strong lead, not a promise. Every permit here links to its own record
+    on the city&rsquo;s portal; check any line you like.
+  </p>
+  <p class="atcost">
+    Postcards are printed and mailed at cost &mdash; we don&rsquo;t mark them up.
+    Reply to the email this page came with and we&rsquo;ll set it up.
+  </p>
+  <p class="provenance">Data pulled from the City of San Francisco on __GENERATED__.</p>
+</footer>
+
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+<script>
+/* per-page config, written by build_pages.py — the only thing that differs
+   between the 25 pages. Everything else is shared. */
+const MAPBOX_TOKEN = '__TOKEN__';
+const COMPANY   = "__COMPANY__";
+const SLUG      = "__SLUG__";
+const START     = __START__;          // cluster id this page opens on
+const DATA      = '/data/';
+const PRICE     = __PRICE__;          // null -> no dollar figure shown
+const YEARS     = __YEARS__;          // suppression window, used in the CSV note
+const RECENT_SINCE = "__RECENT_SINCE__";  // roofs after this date read as recent
+</script>
+<script src="/sf/page.js?v=__BUILD__"></script>
+</body>
+</html>

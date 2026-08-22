@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Dominguez Roofing — roofing clusters in San Francisco, July 23 – August 21</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet">
+<link href="/sf/page.css?v=202608220156" rel="stylesheet">
+</head>
+<body>
+
+<div class="shell">
+<div class="screen">
+
+<header class="top">
+  <div class="topline">
+    <div class="built">Built for</div>
+    <div class="wordmark" aria-label="KnockPortal"><span>Knock</span><span class="wm-o">Portal</span></div>
+  </div>
+  <h1><em>Dominguez Roofing</em></h1>
+  <div class="dateline">Roofing permits &middot; San Francisco &middot; July 23 – August 21</div>
+  <p class="lede">This page groups <b>104 roofing permits</b> from that window into
+     <b>27 clusters</b> and lists the neighbouring houses with no qualifying
+     roofing permit on record &mdash; that is where the work is. Pick a cluster, then walk it or mail it.</p>
+</header>
+
+<div class="controls">
+  <label class="field">
+    <span class="field-label">Cluster</span>
+    <select id="pick" aria-label="Neighbourhood and cluster"></select>
+  </label>
+  <div class="tabs" role="tablist" aria-label="How you want to work the cluster">
+    <button class="tab" id="tab-walk" role="tab" aria-selected="false">
+      <span class="tab-t">Walk the block</span>
+      <span class="tab-s">print the list, knock in order</span>
+    </button>
+    <button class="tab" id="tab-mail" role="tab" aria-selected="true">
+      <span class="tab-t">Postcards</span>
+      <span class="tab-s">pick roofs off the satellite</span>
+    </button>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="maparea">
+    <div id="map"></div>
+    <div class="legend">
+      <span><i class="lg-permit"></i>roofing permit issued July 23–August 21</span>
+      <span><i class="lg-open"></i>no qualifying roofing permit in 8 years of public records</span>
+      <span><i class="lg-sel"></i>picked for this mailing</span>
+      <span><i class="lg-x lg-recent"></i>reroofed since August 2025</span>
+      <span><i class="lg-x lg-done"></i>reroofed earlier, within 8 years</span>
+    </div>
+  </div>
+
+  <aside id="panel">
+    <div class="pane" id="pane"></div>
+    <div class="foot">
+      <div class="count" id="count"></div>
+      <button class="ghost" id="clear" hidden>Clear</button>
+      <button class="go" id="dl">Download</button>
+    </div>
+  </aside>
+</div>
+</div><!-- /.screen -->
+
+<footer class="endnote">
+  <p class="note">
+    A blue house is one with no qualifying roofing permit found in 8 years of available
+    public records &mdash; nothing in the city&rsquo;s permit history for that address. Roofs do get
+    replaced without a permit, before the digital record starts, or filed under another category
+    &mdash; so treat this as a strong lead, not a promise. Every permit here links to its own record
+    on the city&rsquo;s portal; check any line you like.
+  </p>
+  <p class="atcost">
+    Postcards are printed and mailed at cost &mdash; we don&rsquo;t mark them up.
+    Reply to the email this page came with and we&rsquo;ll set it up.
+  </p>
+  <p class="provenance">Data pulled from the City of San Francisco on 2026-08-22 01:56 UTC.</p>
+</footer>
+
+</div>
+
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
+<script>
+/* per-page config, written by build_pages.py — the only thing that differs
+   between the 25 pages. Everything else is shared. */
+const MAPBOX_TOKEN = 'pk.eyJ1Ijoia25vY2twb3J0YWwiLCJhIjoiY21zejFvdDd0MDVzdjJ4c2ExemVqeWV4OSJ9.QBX4adhVFaKMfp11eQmGXw';
+const COMPANY   = "Dominguez Roofing";
+const SLUG      = "dominguez-roofing";
+const START     = 30;          // cluster id this page opens on
+const DATA      = '/data/';
+const PRICE     = null;          // null -> no dollar figure shown
+const YEARS     = 8;          // suppression window, used in the CSV note
+const RECENT_SINCE = "2025-08-21";  // roofs after this date read as recent
+</script>
+<script src="/sf/page.js?v=202608220156"></script>
+</body>
+</html>
