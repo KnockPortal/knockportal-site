@@ -20,3 +20,13 @@ repomix-output.xml
 
 # ---- os / editor cruft ----
 .DS_Store
+.data_backups/
+# канон-документы проекта: живут в Knowledge, не в репозитории
+/facts.md
+/STATE.md
+/session-summary-block__*.md
+# локальные бэкапы правок
+tools/*.bak-*
+tools/*.bak2-*
+# мёртвый прогон данных
+public/data_v3_1006/
