@@ -8,8 +8,9 @@
 > Tokens (hex) are unchanged; their ROLES flipped from the earlier light-first draft. See THEME.
 
 ## PATTERN
-B2B SaaS — permit intelligence for contractors. Daily registry of fresh local building permits
-(full address, job value, issued date) so a contractor knocks first. Live categories: roofing &
+B2B SaaS — a marketing workspace for residential contractors. It reads the city's issued
+building permits, groups them into live clusters, and lets a contractor pick neighbourhoods
+themselves — then launch a postcard campaign or prepare a walk list. Live market: roofing &
 solar (San Francisco); structure is category- and metro-agnostic and expands. Authoritative,
 data-driven, made-by-people-who-get-the-trade. The site is a **conversion funnel only** — after
 subscribing, value lives in email + a member app, not the marketing site (closed-system / "thing
