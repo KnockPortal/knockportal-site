@@ -1,78 +1,101 @@
 #!/usr/bin/env python3
 """
-Build one personalised canvassing page per contractor.
+Build the public San Francisco page and one personalised page per contractor.
 
-    python3 build_pages.py --site ~/Downloads/War/KnockPortal/knockportal-site
+    MAPBOX_TOKEN=pk.xxx python3 build_pages.py --site ~/Downloads/War/KnockPortal/knockportal-site
+    python3 build_pages.py --site <site> --token pk.xxx
 
-Reads:
-    companies.csv                    slug,company,cluster   (cluster may be blank)
-    <site>/public/sf.html            only to lift the Mapbox token
-    <site>/public/data/clusters.json to pick a default cluster and sanity-check
+Reads (all next to this script):
+    companies.csv     slug,company[,cluster]  — the cluster column is ignored
+    _template.html    one template, two variants (see below)
+    page.css page.js fonts/
 Writes:
-    <site>/public/sf/<slug>.html
+    <site>/public/sf/<slug>.html   one per contractor: noindex, carries a name
+    <site>/public/sf.html          the public page: indexable, no name
+    <site>/public/sf/page.css, page.js, fonts/
 
-Blank `cluster` means "open on the biggest cluster of the window" — for SF that
-is the honest default: the city is 7x7 miles and every local roofer works all of
-it, so the neighbourhood switcher matters more than the opening view.
+Two things this generator deliberately does NOT do.
+
+It does not read permit data. Every number describing the current snapshot —
+permit counts, the window, the group count, the suppression years, the date the
+city was pulled — is fetched by the page itself from Supabase Storage at run
+time. Snapshots are published without a rebuild, so a number baked in here
+would start lying the day after it was written.
+
+It does not read its own output. The Mapbox token used to be lifted out of
+public/sf.html; that file is now generated, so the token comes in as --token or
+MAPBOX_TOKEN and the generator runs against an empty public/ just as well.
+
+The `cluster` column in companies.csv is dead for the same reason: cluster ids
+do not survive a data run, and every page now opens on the whole city.
 """
 
-import argparse, csv, datetime as dt, json, os, re, shutil, sys
+import argparse, csv, hashlib, os, re, shutil, sys
 
-MONTHS = ["", "January", "February", "March", "April", "May", "June",
-          "July", "August", "September", "October", "November", "December"]
+# The template carries both variants inline; the generator keeps one and drops
+# the other. Comment markers rather than __PLACEHOLDERS__ so that the template
+# still contains no token that describes a data snapshot.
+PERSONAL = re.compile(r"<!--#personal-->(.*?)<!--/#personal-->", re.S)
+PUBLIC   = re.compile(r"<!--#public-->(.*?)<!--/#public-->", re.S)
 
-def token_from(site):
-    p = os.path.join(site, "public", "sf.html")
-    m = re.search(r"MAPBOX_TOKEN\s*=\s*'([^']+)'", open(p, encoding="utf-8").read())
-    if not m:
-        sys.exit(f"no Mapbox token found in {p}")
-    return m.group(1)
+
+def variant(tpl, personal):
+    keep, drop = (PERSONAL, PUBLIC) if personal else (PUBLIC, PERSONAL)
+    out = keep.sub(lambda m: m.group(1), tpl)
+    # take the line with it when the block owned a whole line, so dropping a
+    # variant does not leave a blank line behind in the shipped HTML
+    return re.sub(r"[ \t]*" + drop.pattern + r"[ \t]*\n?", "", out, flags=re.S)
+
 
 def slugify(name):
     s = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return re.sub(r"-{2,}", "-", s)[:40]
+
+
+def build_id(here):
+    """Cache-buster taken from the assets themselves.
+
+    It used to be the timestamp of the data, which tied ?v= to something the
+    assets have nothing to do with: publishing a snapshot busted a stylesheet
+    that had not changed, and — now that the generator no longer reads data —
+    there is no timestamp to take it from. Hash what actually ships instead.
+    """
+    h = hashlib.sha256()
+    for asset in ("page.js", "page.css"):
+        with open(os.path.join(here, asset), "rb") as f:
+            h.update(f.read())
+    return h.hexdigest()[:12]
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--site", required=True)
     ap.add_argument("--companies", default="companies.csv")
     ap.add_argument("--template", default="_template.html")
-    ap.add_argument("--price", default="", help="postcard unit price, e.g. 1.40; blank = no dollar figure")
+    ap.add_argument("--token", default="",
+                    help="Mapbox public token; falls back to $MAPBOX_TOKEN")
     args = ap.parse_args()
 
+    tok = args.token.strip() or os.environ.get("MAPBOX_TOKEN", "").strip()
+    if not tok:
+        sys.exit("no Mapbox token: pass --token pk.… or set MAPBOX_TOKEN")
+
     site = os.path.expanduser(args.site)
-    data = os.path.join(site, "public", "data")
-    idx = json.load(open(os.path.join(data, "clusters.json"), encoding="utf-8"))
-    meta, clusters = idx["meta"], idx["clusters"]
-    known = {str(c["cluster"]) for c in clusters}
-    biggest = str(sorted(clusters, key=lambda c: (-c["permits"], -c["neighbours"]))[0]["cluster"])
-
-    first = min(c["first"] for c in clusters)
-    last = max(c["last"] for c in clusters)
-    def pretty(d):
-        y, m, dd = d.split("-")
-        return f"{['','January','February','March','April','May','June','July','August','September','October','November','December'][int(m)]} {int(dd)}"
-    window = f"{pretty(first)} – {pretty(last)}"
-    # "recent" is anchored to the data window, never to the day the page is
-    # opened: a static page must not quietly reclassify a roof a month from now
-    _last = dt.date.fromisoformat(last)
-    recent_since = _last.replace(year=_last.year - 1).isoformat()
-    recent_since_label = MONTHS[_last.month] + " " + str(_last.year - 1)
-    window_short = f"{pretty(first)}–{pretty(last)}"
-
+    here = os.path.dirname(os.path.abspath(args.template))
     tpl = open(args.template, encoding="utf-8").read()
-    build = meta["generated"].replace(" ", "").replace(":", "").replace("-", "")[:12]
-    tok = token_from(site)
+
     out = os.path.join(site, "public", "sf")
     os.makedirs(out, exist_ok=True)
+
     # shared assets: one copy for all pages, so a redesign touches one file
-    here = os.path.dirname(os.path.abspath(args.template))
     for asset in ("page.css", "page.js"):
         src = os.path.join(here, asset)
         if not os.path.exists(src):
             sys.exit(f"missing {asset} next to the template")
         open(os.path.join(out, asset), "w", encoding="utf-8").write(
             open(src, encoding="utf-8").read())
+
+    build = build_id(here)
 
     # self-hosted webfonts: page.css resolves them relative to itself, so they
     # have to land in public/sf/fonts/. A missing font 404s silently and the
@@ -93,6 +116,17 @@ def main():
             shutil.copyfile(fp, os.path.join(fdst, f))
         print(f"fonts copied: {len(wanted)} files -> public/sf/fonts/")
 
+    def render(name, slug, personal):
+        html = (variant(tpl, personal)
+                .replace("__COMPANY__", name)
+                .replace("__SLUG__", slug)
+                .replace("__TOKEN__", tok)
+                .replace("__BUILD__", build))
+        left = re.findall(r"__[A-Z_]+__", html)
+        if left:
+            sys.exit(f"{slug}: unresolved placeholders {sorted(set(left))}")
+        return html
+
     rows = list(csv.DictReader(open(args.companies, encoding="utf-8")))
     made = []
     for r in rows:
@@ -100,44 +134,25 @@ def main():
         if not name:
             continue
         slug = (r.get("slug") or "").strip() or slugify(name)
-        cid = (r.get("cluster") or "").strip()
-        if cid and cid not in known:
-            print(f"  ! {slug}: cluster {cid} not in this run, falling back to {biggest}")
-            cid = ""
-        cid = cid or biggest
-
-        html = (tpl
-                .replace("__COMPANY__", name)
-                .replace("__SLUG__", slug)
-                .replace("__START__", cid)
-                .replace("__TOKEN__", tok)
-                .replace("__PRICE__", args.price.strip() or "null")
-                .replace("__DAYS__", str(meta["window_days"]))
-                .replace("__PERMITS__", str(meta["permits_in_clusters"]))
-                .replace("__CLUSTERS__", str(meta["clusters"]))
-                .replace("__RECENT_SINCE_LABEL__", recent_since_label)
-                .replace("__RECENT_SINCE__", recent_since)
-                .replace("__YEARS__", str(meta["suppress_years"]))
-                .replace("__WINDOW_SHORT__", window_short)
-                .replace("__WINDOW__", window)
-                .replace("__GENERATED__", meta["generated"])
-                .replace("__BUILD__", build))
-        left = re.findall(r"__[A-Z_]+__", html)
-        if left:
-            sys.exit(f"{slug}: unresolved placeholders {sorted(set(left))}")
-
         path = os.path.join(out, f"{slug}.html")
-        open(path, "w", encoding="utf-8").write(html)
-        made.append((slug, name, cid))
+        open(path, "w", encoding="utf-8").write(render(name, slug, True))
+        made.append((slug, name))
 
-    print(f"\n{len(made)} pages -> {out}")
-    for slug, name, cid in made:
-        print(f"  /sf/{slug:<34} {name[:32]:<32} cluster {cid}")
-    print(f"\nwindow {window} · {meta['clusters']} clusters · "
-          f"{len(meta['neighbourhoods'])} neighbourhoods · data {meta['generated']}")
-    print("\nshared assets copied: public/sf/page.css, public/sf/page.js")
-    print("rewrite in next.config.mjs (already added):")
+    # /sf is the public surface, not a demo: no company, and no noindex
+    pub = os.path.join(site, "public", "sf.html")
+    open(pub, "w", encoding="utf-8").write(render("", "sf", False))
+
+    print(f"\n{len(made)} personal pages -> {out}")
+    for slug, name in made:
+        print(f"  /sf/{slug:<34} {name[:40]}")
+    print(f"\npublic page -> {pub}  (indexable, no company name)")
+    print(f"asset build id: {build}  (sha256 of page.js + page.css)")
+    print("shared assets copied: public/sf/page.css, public/sf/page.js")
+    print("data is fetched at run time from Supabase Storage; this generator reads none of it")
+    print("rewrites in next.config.mjs (already present):")
+    print("  { source: '/sf',       destination: '/sf.html' }")
     print("  { source: '/sf/:slug', destination: '/sf/:slug.html' }")
+
 
 if __name__ == "__main__":
     main()

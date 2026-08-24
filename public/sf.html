@@ -1,361 +1,111 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>San Francisco roof clusters — KnockPortal</title>
-<meta name="description" content="Roofs in San Francisco get replaced in streets, not one at a time. See a live cluster: seven permits in three weeks, two blocks apart.">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<!-- The two variants of this file differ in the <head> and in the header only.
+     build_pages.py keeps the block that matches the page it is writing and
+     drops the other one: a personal demo asks robots to stay away and carries
+     a company name, /sf is a public surface and carries neither. -->
+<title>Roofing permits in San Francisco</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet">
-<style>
-:root{
-  --ink:#0F1720; --slate:#1B2733; --line:#2C3A48;
-  --flare:#FF6B1A; --paper:#F2F5F7; --mute:#8A99A8; --sky:#5FB0E8;
-  --max:1180px;
-}
-*{box-sizing:border-box;margin:0}
-html{scroll-behavior:smooth}
-body{background:var(--ink);color:var(--paper);font-family:'Barlow',system-ui,sans-serif;
-     font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
-.wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
-.whatis{border-top:1px solid var(--line);padding:40px 0 8px;max-width:760px}
-.whatis h2{margin:0 0 14px}
-.whatis p{margin:0 0 14px}
-.grab{margin:22px 0 8px;display:flex;flex-direction:column;gap:10px;align-items:flex-start}
-.grab a.dl,a.dl{display:inline-block!important;background:#FF6B1A!important;color:#1B2733!important;font-weight:600;text-decoration:none!important;padding:13px 22px;border-radius:5px;font-family:var(--fd,inherit);letter-spacing:.01em}
-.grab a.dl:hover,a.dl:hover{background:#E85D10!important;color:#1B2733!important}
-
-/* ---------- masthead ---------- */
-.mast{display:flex;align-items:center;justify-content:space-between;padding:22px 0}
-.logo{display:flex;align-items:center;gap:11px;text-decoration:none;color:var(--paper)}
-.logo i{width:20px;height:20px;background:var(--flare);
-        clip-path:polygon(50% 6%,100% 94%,0 94%);display:block}
-.logo b{font-family:'Barlow Condensed';font-weight:700;letter-spacing:.16em;font-size:18px}
-.mast a.back{color:var(--mute);text-decoration:none;font-size:14px;border-bottom:1px solid transparent}
-.mast a.back:hover{color:var(--paper);border-color:var(--line)}
-
-/* ---------- hero ---------- */
-.eyebrow{font-family:'IBM Plex Mono';font-size:11.5px;letter-spacing:.22em;color:var(--flare);
-         text-transform:uppercase;margin-bottom:20px}
-h1{font-family:'Barlow Condensed';font-weight:600;font-size:clamp(38px,6.4vw,76px);
-   line-height:.98;letter-spacing:-.005em;max-width:15ch}
-h1 em{font-style:normal;color:var(--flare)}
-.lede{margin-top:22px;max-width:56ch;color:#C3CDD6;font-size:19px}
-
-/* ---------- map ---------- */
-.stage{margin-top:44px;position:relative;border-top:1px solid var(--line);
-       border-bottom:1px solid var(--line);background:#0A1016}
-#map{height:min(74vh,660px);width:100%}
-.mapbox-improve-map,.mapboxgl-ctrl-attrib-inner a[href*="improve"]{display:none}
-
-.hud{position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(10,16,22,.94) 42%);
-     padding:56px 24px 20px;pointer-events:none}
-.hud .in{max-width:var(--max);margin:0 auto;display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
-.readout{pointer-events:auto;min-width:230px}
-.readout .k{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.18em;color:var(--mute);text-transform:uppercase}
-.readout .v{font-family:'Barlow Condensed';font-weight:600;font-size:30px;line-height:1.1;margin-top:2px}
-.readout .v small{font-size:15px;color:var(--mute);font-weight:500;margin-left:7px}
-
-.scrub{pointer-events:auto;flex:1;min-width:280px}
-.track{position:relative;height:3px;background:var(--line);margin:16px 0 9px;border-radius:2px}
-.fill{position:absolute;inset:0 auto 0 0;background:var(--flare);border-radius:2px;width:0;transition:width .5s ease}
-.ticks{position:absolute;inset:-6px 0;display:flex}
-.tick{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--ink);
-      border:2px solid var(--line);transform:translateX(-50%);top:-3px;transition:.4s}
-.tick.on{background:var(--flare);border-color:var(--flare)}
-.dates{display:flex;justify-content:space-between;font-family:'IBM Plex Mono';font-size:11px;color:var(--mute)}
-.play{pointer-events:auto;background:transparent;border:1px solid var(--line);color:var(--paper);
-      border-radius:999px;padding:9px 20px;font:600 13px 'Barlow';cursor:pointer;white-space:nowrap}
-.play:hover{border-color:var(--flare);color:var(--flare)}
-.play:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
-
-.key{display:flex;gap:22px;flex-wrap:wrap;padding:16px 0 0;font-size:13.5px;color:var(--mute)}
-.key span{display:flex;align-items:center;gap:8px}
-.sw{width:11px;height:11px;border-radius:50%;flex:none}
-.sw.o{background:var(--flare);box-shadow:0 0 0 2px rgba(255,107,26,.25)}
-.sw.n{background:var(--sky);opacity:.8}
-.sw.x{background:transparent;color:#C3CDD6;font:700 13px/11px 'Barlow';width:11px;text-align:center}
-
-/* ---------- prose ---------- */
-.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:46px;padding:74px 0 0}
-.cols h2{font-family:'Barlow Condensed';font-weight:600;font-size:25px;letter-spacing:.01em;margin-bottom:12px}
-.cols p{color:#B7C2CC;font-size:16.5px}
-.cols p + p{margin-top:12px}
-.cols a{color:var(--flare);text-decoration:none;border-bottom:1px solid rgba(255,107,26,.35)}
-.cols a:hover{border-color:var(--flare)}
-
-/* ---------- capture ---------- */
-.capture{margin:80px 0 0;border:1px solid var(--line);border-radius:14px;padding:38px;
-         background:linear-gradient(160deg,#16212C,#111A23)}
-.capture h2{font-family:'Barlow Condensed';font-weight:600;font-size:clamp(26px,3.4vw,38px);line-height:1.06;max-width:20ch}
-.capture p{color:#B7C2CC;margin-top:12px;max-width:52ch;font-size:16.5px}
-form{display:flex;gap:11px;margin-top:26px;flex-wrap:wrap}
-input[type=email]{flex:1;min-width:230px;background:#0C141B;border:1px solid var(--line);color:var(--paper);
-      border-radius:9px;padding:14px 16px;font:400 16px 'Barlow'}
-input[type=email]::placeholder{color:#6C7A88}
-input[type=email]:focus{outline:none;border-color:var(--flare)}
-button.go{background:var(--flare);color:#170E06;border:0;border-radius:9px;padding:14px 28px;
-      font:600 16px 'Barlow';cursor:pointer;white-space:nowrap}
-button.go:hover{background:#ff7d38}
-button.go:focus-visible{outline:2px solid var(--paper);outline-offset:2px}
-.note{margin-top:14px;font-size:13.5px;color:var(--mute)}
-.msg{margin-top:14px;font-size:15px;color:var(--flare);min-height:1.4em}
-
-footer{margin-top:84px;border-top:1px solid var(--line);padding:26px 0 54px;
-       color:var(--mute);font-size:13.5px;display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
-footer a{color:var(--mute);text-decoration:none}
-footer a:hover{color:var(--paper)}
-
-.mapboxgl-popup-content{background:var(--slate);color:var(--paper);border:1px solid var(--line);
-   border-radius:9px;padding:13px 15px;font-family:'Barlow';box-shadow:0 12px 30px rgba(0,0,0,.5)}
-.mapboxgl-popup-tip{border-top-color:var(--slate)!important;border-bottom-color:var(--slate)!important}
-.mapboxgl-popup-close-button{color:var(--mute);font-size:18px;padding:2px 7px}
-.pop b{font-family:'Barlow Condensed';font-weight:600;font-size:17px;letter-spacing:.02em;display:block}
-.pop .m{font-family:'IBM Plex Mono';font-size:11.5px;color:var(--mute);margin-top:3px}
-.pop a{color:var(--flare);font-size:13px;text-decoration:none;display:inline-block;margin-top:7px;
-   border-bottom:1px solid rgba(255,107,26,.4)}
-
-@media (max-width:700px){
-  body{font-size:16px}
-  .hud{padding:44px 16px 16px}
-  .readout{min-width:0}
-  .capture{padding:26px}
-  #map{height:62vh}
-}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style>
+<link href="/sf/page.css?v=47f04d84e947" rel="stylesheet">
 </head>
-<body>
+<!-- page.js flips data-screen between "city" and "cluster"; the stylesheet
+     reads it. The markup of both screens ships in one document. -->
+<body data-screen="city">
 
-<div class="wrap">
-  <div class="mast">
-    <a class="logo" href="/"><img src="/logo/logo-lockup-color-on-dark-outlined.svg" alt="KnockPortal" style="height:26px;width:auto;display:block"></a>
-    <a class="back" href="/">Main site</a>
+<div class="shell">
+<div class="screen">
+
+<header class="top">
+  <div class="topline">
+    <div class="built"></div>
+    <div class="wordmark" aria-label="KnockPortal"><span>Knock</span><span class="wm-o">Portal</span></div>
   </div>
+  <h1>Roofing permits in <em>San Francisco</em></h1>
+  <div class="dateline" id="dateline"></div>
+  <!-- every word of both ledes is written by page.js from the data it drew -->
+  <p class="lede" id="lede-city"></p>
+  <p class="lede" id="lede-cluster"></p>
+  <p class="notice" id="notice" hidden></p>
+</header>
 
-  <div class="eyebrow">San Francisco · Castro / Upper Market · live permit data</div>
-  <h1>Roofs go in <em>streets</em>, not one at a time.</h1>
-  <p class="lede">Seven roofing permits were issued here in three weeks, all within two blocks. Houses built in the same decade wear out together — and the neighbours are watching a crew work down the street right now.</p>
+<div class="controls">
+  <button class="back" id="back" type="button">&larr; All of San Francisco</button>
+  <label class="field">
+    <span class="field-label">Group</span>
+    <select id="pick" aria-label="Neighbourhood and group"></select>
+  </label>
+  <div class="tabs" role="tablist" aria-label="How you want to work the group">
+    <button class="tab" id="tab-walk" role="tab" aria-selected="false">
+      <span class="tab-t">Walk the block</span>
+      <span class="tab-s">print the list, knock in order</span>
+    </button>
+    <button class="tab" id="tab-mail" role="tab" aria-selected="true">
+      <span class="tab-t">Postcards</span>
+      <span class="tab-s">pick roofs off the satellite</span>
+    </button>
+  </div>
 </div>
 
 <div class="stage">
-  <div id="map"></div>
-  <div class="hud">
-    <div class="in">
-      <div class="readout">
-        <div class="k">Permits issued</div>
-        <div class="v"><span id="cnt">7</span> <small id="thru">Jul 23 – Aug 12, 2026</small></div>
-      </div>
-      <div class="scrub">
-        <div class="track"><div class="fill" id="fill"></div><div class="ticks" id="ticks"></div></div>
-        <div class="dates"><span>Jul 23</span><span>Aug 12</span></div>
-      </div>
-      <button class="play" id="play">Replay three weeks</button>
+  <div class="maparea">
+    <div id="map"></div>
+    <div class="legend" id="legend-city">
+      <span><i class="lg-permit"></i>roofing permit with neighbouring permits around it</span>
+      <span><i class="lg-solo"></i>single permit, nothing around it to work with</span>
+      <span><i class="lg-box"></i>a group &mdash; click it to open the block</span>
+    </div>
+    <div class="legend" id="legend-cluster">
+      <span><i class="lg-permit"></i>roofing permit issued <span class="win"></span></span>
+      <span><i class="lg-open"></i>no qualifying roofing permit in <span class="yrs"></span> years of public records</span>
+      <span><i class="lg-sel"></i>picked for this mailing</span>
+      <span><i class="lg-x lg-recent"></i>reroofed since <span class="rsince"></span></span>
+      <span><i class="lg-x lg-done"></i>reroofed earlier, within <span class="yrs"></span> years</span>
     </div>
   </div>
+
+  <aside id="panel">
+    <div class="pane" id="pane"></div>
+    <div class="foot">
+      <div class="count" id="count"></div>
+      <button class="ghost" id="clear" hidden>Clear</button>
+      <button class="go" id="dl">Download</button>
+    </div>
+  </aside>
 </div>
+</div><!-- /.screen -->
 
-<div class="wrap">
-  <div class="key">
-    <span><i class="sw o"></i>roofing permit issued — a competitor is already on that roof</span>
-    <span><i class="sw n"></i>same blocks, no roofing permit since 2018</span>
-  </div>
+<footer class="endnote">
+  <p class="note">
+    A blue house is one with no qualifying roofing permit found in <span class="yrs"></span> years of available
+    public records &mdash; nothing in the city&rsquo;s permit history for that address. Roofs do get
+    replaced without a permit, before the digital record starts, or filed under another category
+    &mdash; so treat this as a strong lead, not a promise. Every permit here links to its own record
+    on the city&rsquo;s portal; check any line you like.
+  </p>
+  <p class="atcost">
+    Postcards are printed and mailed for you.
+    Reply to the email this page came with and we&rsquo;ll set it up.
+  </p>
+  <p class="provenance" id="provenance"></p>
+  <p class="staleness" id="staleness" hidden></p>
+</footer>
 
-  <div class="cols">
-    <div>
-      <h2>Where this comes from</h2>
-      <p>Every point is a public record. San Francisco publishes building permits as open data; we pull them several times a day, place each one on its parcel, and look for permits that land close together in space and time.</p>
-      <p>You can check any address on this map against the city's own record — the links in the popups go straight there.</p>
-    </div>
-    <div>
-      <h2>Why this isn't a lead list</h2>
-      <p>A permit means that job is sold. The orange points are your competitors' work, not your prospects.</p>
-      <p>What's worth your morning is the blue: the houses on those same blocks that haven't been re-roofed in years, whose owners have just spent three weeks watching scaffolding go up next door.</p>
-    </div>
-    <div>
-      <h2>We watch the source, too</h2>
-      <p>On July 1 the city quietly moved roofing permits to a new system. Anyone reading the old feed saw the market drop 91% — it hadn't. July was the strongest month of the year.</p>
-      <p>Both datasets are public and free. If you pull San Francisco permits yourself, count them by month per category and look for the cliff — ours is at July 1.</p>
-    </div>
-  </div>
-
-  <div class="whatis">
-    <h2>What KnockPortal is</h2>
-    <p>We read San Francisco's permit records several times a day, place every permit on its parcel, and watch for the ones landing close together. Subscribers get that as a daily registry — full addresses, issue dates, their trade only — plus the blocks where work is grouping and the houses on those blocks with nothing on file. That part is for members.</p>
-    <p>This page is not. The map above is a real cluster, and the file below is the real list behind it — both free, no account, nothing to sign up for.</p>
-    <div class="grab">
-      <a class="dl" href="/KnockPortal_SF_Clusters_Aug2026.xlsx" download>Download the three clusters (.xlsx)</a>
-      <span class="note">15 permits with city record links · 337 addresses on those blocks with no roofing permit since 2018 · Castro, Outer Richmond, Oceanview</span>
-    </div>
-  </div>
-
-  <div class="capture">
-    <h2>Want next week's clusters?</h2>
-    <p>Every Monday: where roofing permits are grouping in San Francisco, with the addresses on those blocks that haven't been re-roofed. No charge, no account — reply and tell me whether it's useful.</p>
-    <form id="f">
-      <input type="email" id="email" placeholder="you@yourcompany.com" required autocomplete="email" aria-label="Your email">
-      <button class="go" type="submit">Send me the clusters</button>
-    </form>
-    <div class="msg" id="msg" role="status"></div>
-    <div class="note">One email a week. Unsubscribe by replying "stop".</div>
-  </div>
-
-  <footer>
-    <div>KnockPortal is operated by Abalon Construction Management LLC, Raleigh, NC.</div>
-    <div><a href="/">knockportal.com</a></div>
-  </footer>
 </div>
 
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.js"></script>
 <script>
+/* Per-page config, written by build_pages.py. COMPANY is empty on /sf and that
+   emptiness is what page.js reads to tell the public page from a demo.
+   DATA_BASE holds no snapshot: the page asks latest.json which one is current,
+   so a fresh publish reaches every page already in the field without a rebuild. */
 const MAPBOX_TOKEN = 'pk.eyJ1Ijoia25vY2twb3J0YWwiLCJhIjoiY21zejFvdDd0MDVzdjJ4c2ExemVqeWV4OSJ9.QBX4adhVFaKMfp11eQmGXw';
-const SUBSCRIBE_ENDPOINT = '/api/subscribe';   // wire to your own handler
-const FALLBACK_EMAIL = 'alex@knockportal.com'; // used if the endpoint is not live
-const PERMITS=[{"a":"429 Corbett Ave","d":"2026-07-23","rec":"BLDG-26-1607","url":"https://sanfranciscoca.portal.opengov.com/records/9464","lat":37.758204,"lon":-122.445447},{"a":"7 Short St","d":"2026-07-27","rec":"BLDG-26-1691","url":"https://sanfranciscoca.portal.opengov.com/records/9704","lat":37.757406,"lon":-122.442538},{"a":"423 Corbett Ave","d":"2026-07-27","rec":"BLDG-26-1606","url":"https://sanfranciscoca.portal.opengov.com/records/9461","lat":37.758335,"lon":-122.445577},{"a":"236 Romain St","d":"2026-08-05","rec":"BLDG-26-1842","url":"https://sanfranciscoca.portal.opengov.com/records/10039","lat":37.756181,"lon":-122.44199},{"a":"92 Caselli Ave","d":"2026-08-05","rec":"BLDG-26-1886","url":"https://sanfranciscoca.portal.opengov.com/records/10495","lat":37.759835,"lon":-122.441315},{"a":"153 Caselli Ave","d":"2026-08-06","rec":"BLDG-26-1909","url":"https://sanfranciscoca.portal.opengov.com/records/10565","lat":37.759414,"lon":-122.441988},{"a":"321 Caselli Ave","d":"2026-08-12","rec":"BLDG-26-2036","url":"https://sanfranciscoca.portal.opengov.com/records/10910","lat":37.758798,"lon":-122.443831}];
-const NEIGH=[[-122.44148,37.76039],[-122.44027,37.75923],[-122.44036,37.75923],[-122.44045,37.75923],[-122.44053,37.75923],[-122.44071,37.75923],[-122.44079,37.75922],[-122.44088,37.75922],[-122.44097,37.75921],[-122.44127,37.75919],[-122.44144,37.75918],[-122.44153,37.75918],[-122.4417,37.75916],[-122.44179,37.75916],[-122.44188,37.75916],[-122.44188,37.75916],[-122.44198,37.75915],[-122.44277,37.75871],[-122.44313,37.75874],[-122.44332,37.75874],[-122.44341,37.75872],[-122.44351,37.7587],[-122.44112,37.75949],[-122.44112,37.75949],[-122.44121,37.75949],[-122.4413,37.75948],[-122.44138,37.75948],[-122.44147,37.75947],[-122.44156,37.75947],[-122.44164,37.75946],[-122.44173,37.75945],[-122.44173,37.75945],[-122.44216,37.7594],[-122.44375,37.75894],[-122.44378,37.75885],[-122.44378,37.75885],[-122.44389,37.75874],[-122.44394,37.75869],[-122.444,37.75863],[-122.44038,37.75954],[-122.44038,37.75954],[-122.44081,37.75995],[-122.44081,37.75995],[-122.44081,37.75995],[-122.44055,37.75953],[-122.44098,37.75994],[-122.44106,37.75993],[-122.44115,37.75989],[-122.44072,37.75952],[-122.44123,37.75988],[-122.44072,37.75952],[-122.44123,37.75988],[-122.44081,37.75951],[-122.44099,37.7595],[-122.4414,37.75983],[-122.44099,37.7595],[-122.4414,37.75983],[-122.4456,37.75845],[-122.4456,37.75845],[-122.44497,37.75817],[-122.44488,37.75824],[-122.44469,37.75825],[-122.44462,37.75825],[-122.44148,37.76031],[-122.4413,37.76011],[-122.44129,37.76004],[-122.44137,37.75996],[-122.44574,37.75853],[-122.44565,37.75845],[-122.4454,37.75811],[-122.44539,37.75791],[-122.44487,37.75793],[-122.44485,37.75793],[-122.44476,37.75794],[-122.44283,37.75594],[-122.44362,37.75863],[-122.44407,37.75857],[-122.4425,37.75833],[-122.4426,37.75838],[-122.4428,37.75847],[-122.44292,37.7585],[-122.44309,37.75855],[-122.44318,37.75858],[-122.44318,37.75858],[-122.44328,37.75859],[-122.44342,37.75859],[-122.44242,37.75627],[-122.44254,37.7562],[-122.44281,37.75612],[-122.44223,37.75641],[-122.4437,37.75871],[-122.44153,37.75624],[-122.44189,37.75619],[-122.44216,37.7561],[-122.44268,37.75744],[-122.44192,37.75836],[-122.4418,37.75751],[-122.44182,37.75743],[-122.44189,37.75725],[-122.44192,37.75716],[-122.44203,37.75708],[-122.44216,37.75714],[-122.44211,37.75704],[-122.44204,37.75768],[-122.44206,37.7576],[-122.44215,37.75749],[-122.4422,37.75741],[-122.44227,37.75736],[-122.44246,37.75732],[-122.44246,37.75732],[-122.44246,37.75732],[-122.44218,37.75725],[-122.44241,37.7571],[-122.44241,37.7571],[-122.44241,37.75875],[-122.44242,37.75868],[-122.44242,37.75861],[-122.44243,37.75854],[-122.44243,37.75846],[-122.44237,37.75832]];
-
-mapboxgl.accessToken = MAPBOX_TOKEN;
-const CENTER = [-122.44305, 37.75820];
-const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const map = new mapboxgl.Map({
-  container: 'map',
-  style: 'mapbox://styles/mapbox/satellite-streets-v12',
-  center: CENTER, zoom: 15.4, minZoom: 13, maxZoom: 19,
-  attributionControl: true, cooperativeGestures: true
-});
-map.addControl(new mapboxgl.NavigationControl({showCompass:false}), 'top-right');
-
-let mapReady = false;
-function mapFailed(why){
-  if (mapReady) return;
-  const el = document.getElementById('map');
-  el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;'
-    + 'padding:32px;text-align:center;font:15px Barlow;color:#8A99A8">'
-    + '<div><b style="display:block;color:#F2F5F7;font-family:\'Barlow Condensed\';font-size:21px;'
-    + 'letter-spacing:.02em;margin-bottom:8px">The map did not load</b>'
-    + why + '</div></div>';
-}
-map.on('error', e => {
-  const m = (e && e.error && e.error.message) || '';
-  mapFailed(/401|403|token/i.test(m)
-    ? 'Mapbox rejected the access token. Check the token and its URL restrictions.'
-    : 'Could not reach Mapbox. If you are on a VPN or opened this file directly from disk, serve it over http and try again.');
-});
-setTimeout(() => mapFailed('Mapbox did not respond. Serve the page over http rather than opening the file directly, and check any VPN or ad blocker.'), 9000);
-
-const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US',{month:'short', day:'numeric'});
-const t0 = new Date(PERMITS[0].d + 'T12:00:00').getTime();
-const t1 = new Date(PERMITS[PERMITS.length-1].d + 'T12:00:00').getTime();
-const pct = d => ((new Date(d+'T12:00:00').getTime() - t0) / (t1 - t0)) * 100;
-
-/* ticks on the scrubber, one per permit date */
-const ticks = document.getElementById('ticks');
-PERMITS.forEach((p,i) => {
-  const el = document.createElement('i');
-  el.className = 'tick'; el.style.left = pct(p.d) + '%'; el.dataset.i = i;
-  ticks.appendChild(el);
-});
-
-const markers = [];
-map.on('load', () => {
-  mapReady = true;
-  map.addSource('neigh', {
-    type:'geojson',
-    data:{type:'FeatureCollection', features: NEIGH.map(c => ({
-      type:'Feature', geometry:{type:'Point', coordinates:c}, properties:{}
-    }))}
-  });
-  map.addLayer({
-    id:'neigh-dots', type:'circle', source:'neigh',
-    paint:{
-      'circle-radius':['interpolate',['linear'],['zoom'],14,2.4,17,4.6,19,7],
-      'circle-color':'#5FB0E8', 'circle-opacity':0.75,
-      'circle-stroke-width':1, 'circle-stroke-color':'#0F1720', 'circle-stroke-opacity':0.6
-    }
-  });
-
-  PERMITS.forEach((p,i) => {
-    // outer node is positioned by Mapbox (it writes transform on it) — never touch its transform.
-    const el = document.createElement('div');
-    el.style.cssText = 'width:17px;height:17px;cursor:pointer';
-    const dot = document.createElement('div');
-    dot.style.cssText = 'width:100%;height:100%;border-radius:50%;background:#FF6B1A;'
-      + 'box-shadow:0 0 0 3px #fff,0 3px 10px rgba(0,0,0,.6);transform:scale(0);'
-      + 'transition:transform .45s cubic-bezier(.34,1.56,.64,1)';
-    el.appendChild(dot);
-    const pop = new mapboxgl.Popup({offset:16, closeButton:true}).setHTML(
-      '<div class="pop"><b>' + p.a + '</b>'
-      + '<div class="m">roofing permit issued ' + fmt(p.d) + ' · ' + p.rec + '</div>'
-      + '<a href="' + p.url + '" target="_blank" rel="noopener">city record →</a></div>');
-    const m = new mapboxgl.Marker({element:el}).setLngLat([p.lon, p.lat]).setPopup(pop).addTo(map);
-    markers.push({el:dot, m});
-  });
-
-  const b = new mapboxgl.LngLatBounds();
-  PERMITS.forEach(p => b.extend([p.lon, p.lat]));
-  NEIGH.forEach(c => b.extend(c));
-  map.fitBounds(b, {padding:{top:70, bottom:150, left:70, right:70}, duration:0, maxZoom:16.6});
-
-  reduced ? showAll() : play();
-});
-
-function showAll(){
-  markers.forEach(x => x.el.style.transform = 'scale(1)');
-  document.querySelectorAll('.tick').forEach(t => t.classList.add('on'));
-  document.getElementById('fill').style.width = '100%';
-  document.getElementById('cnt').textContent = PERMITS.length;
-  document.getElementById('thru').textContent = fmt(PERMITS[0].d) + ' – ' + fmt(PERMITS[PERMITS.length-1].d) + ', 2026';
-}
-
-let timer = null;
-function play(){
-  clearTimeout(timer);
-  markers.forEach(x => x.el.style.transform = 'scale(0)');
-  document.querySelectorAll('.tick').forEach(t => t.classList.remove('on'));
-  document.getElementById('fill').style.width = '0%';
-  document.getElementById('cnt').textContent = '0';
-  document.getElementById('thru').textContent = 'watching three weeks';
-
-  let i = 0;
-  const step = () => {
-    if (i >= PERMITS.length){
-      document.getElementById('thru').textContent =
-        fmt(PERMITS[0].d) + ' – ' + fmt(PERMITS[PERMITS.length-1].d) + ', 2026';
-      return;
-    }
-    const p = PERMITS[i];
-    markers[i].el.style.transform = 'scale(1)';
-    document.querySelector('.tick[data-i="' + i + '"]').classList.add('on');
-    document.getElementById('fill').style.width = pct(p.d) + '%';
-    document.getElementById('cnt').textContent = i + 1;
-    i++;
-    timer = setTimeout(step, 620);
-  };
-  timer = setTimeout(step, 400);
-}
-document.getElementById('play').addEventListener('click', play);
-
-/* ---- email capture ---- */
-document.getElementById('f').addEventListener('submit', async e => {
-  e.preventDefault();
-  const email = document.getElementById('email').value.trim();
-  const msg = document.getElementById('msg');
-  if (!email) return;
-  msg.textContent = 'Sending…';
-  try {
-    const r = await fetch(SUBSCRIBE_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({email, source:'sf-clusters'})
-    });
-    if (!r.ok) throw new Error(r.status);
-    msg.textContent = "You're on the list. First one lands Monday.";
-    document.getElementById('f').reset();
-  } catch {
-    msg.innerHTML = 'Email me directly and I will add you: <a href="mailto:'
-      + FALLBACK_EMAIL + '?subject=SF%20clusters" style="color:#FF6B1A">' + FALLBACK_EMAIL + '</a>';
-  }
-});
+const COMPANY      = "";
+const SLUG         = "sf";
+const DATA_BASE    = 'https://hxvxklqagzqxlfjfxnno.supabase.co/storage/v1/object/public/data/';
 </script>
+<script src="/sf/page.js?v=47f04d84e947"></script>
 </body>
 </html>

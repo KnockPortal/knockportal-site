@@ -8,10 +8,18 @@
                narrows to a running tally of picked roofs.
 
    Mode state lives in aria-selected on #tab-walk / #tab-mail (set by page.js);
-   the layout reads it with :has() — no JS was changed.
+   the layout reads it with :has().
 
-   Hooks page.js depends on (ids + emitted classes) are untouched:
-   #map #pick #tab-walk #tab-mail #pane #count #clear #dl
+   Above the modes sits the screen. body[data-screen] is written by page.js:
+
+     city      the whole of San Francisco. Map takes the full width, the panel
+               and the group controls are gone — there is no group picked yet.
+     cluster   the composition above: map + panel, walk or postcards.
+
+   Hooks page.js depends on (ids + emitted classes):
+   #map #back #pick #tab-walk #tab-mail #pane #count #clear #dl
+   #dateline #lede-city #lede-cluster #notice #provenance #staleness
+   .yrs .win .rsince   (runtime text slots)
    .grp .st .row .row.pick .row.on .z .hint
    ========================================================================= */
 
@@ -75,15 +83,32 @@ h1 em{font-style:normal;color:var(--orange)}
 .dateline{font:600 13px/1.4 var(--cond);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
 .lede{margin:10px 0 0;color:var(--lede);font-size:15px;line-height:1.5;max-width:68ch}
 .lede b{color:var(--paper);font-weight:600}
+/* the standing caveat under the city lede: same paragraph, quieter voice —
+   it is not news about this snapshot, it is what the snapshot is not */
+.lede-2{display:block;margin-top:9px;color:var(--mute)}
+.lede-2 b{color:var(--lede)}
+/* a forwarded #c<id> that no longer exists lands here */
+.notice{
+  margin:10px 0 0;max-width:68ch;padding:9px 13px;
+  border-left:3px solid var(--orange);background:rgba(255,107,26,.09);
+  color:var(--lede);font-size:13.5px;line-height:1.45;
+}
 
 /* --------------------------------------------------------------- controls */
 .controls{
   position:sticky;top:0;z-index:30;
-  display:grid;grid-template-columns:minmax(280px,1fr) auto;gap:14px;align-items:end;
+  display:grid;grid-template-columns:auto minmax(240px,1fr) auto;gap:14px;align-items:end;
   padding:14px 28px;background:rgba(15,24,34,.92);
   border-top:1px solid var(--line);border-bottom:1px solid var(--line);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
+.back{
+  background:none;border:1px solid var(--line);color:var(--paper);border-radius:8px;
+  padding:12px 15px;font:600 13px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;white-space:nowrap;
+  transition:background .15s ease,border-color .15s ease;
+}
+.back:hover{border-color:#4A5D70;background:rgba(35,49,64,.6)}
 .field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .field-label{font:600 11px/1 var(--cond);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 select#pick{
@@ -125,19 +150,48 @@ select#pick option{font:15px Barlow;background:var(--slate);color:var(--paper)}
 /* postcards: the satellite is the work surface */
 body:has(#tab-mail[aria-selected=true]) .stage{--panel-w:360px}
 
+/* ---------------------------------------------------------------- screens */
+/* City: nothing is picked yet, so there is no list to show and no group to
+   switch. The panel is not emptied, it is removed from the layout. */
+body[data-screen="city"] .stage{grid-template-columns:minmax(0,1fr)}
+body[data-screen="city"] #panel{display:none}
+body[data-screen="city"] .controls{display:none}
+body[data-screen="city"] #lede-cluster{display:none}
+body[data-screen="city"] #legend-cluster{display:none}
+/* "a blue house is…" describes the cluster map; there are no blue houses on
+   the city map, so the caveat waits until it is true */
+body[data-screen="city"] .note{display:none}
+body[data-screen="cluster"] #lede-city{display:none}
+body[data-screen="cluster"] #legend-city{display:none}
+
 .maparea{position:relative;min-width:0;background:var(--well)}
 #map{position:absolute;inset:0}
-/* demote the map a notch while walking — it is a locator, not the job */
-body:has(#tab-walk[aria-selected=true]) .maparea::after{
+/* demote the map a notch while walking — it is a locator, not the job. Only on
+   the cluster screen: on the city screen the map IS the job. */
+body[data-screen="cluster"]:has(#tab-walk[aria-selected=true]) .maparea::after{
   content:'';position:absolute;inset:0;pointer-events:none;
   background:rgba(15,24,34,.18);
 }
+
+/* the map area also carries its own failure, so it must read on both screens */
+.mapmsg{
+  height:100%;display:flex;align-items:center;justify-content:center;
+  padding:32px;text-align:center;font:15px/1.5 Barlow, system-ui, sans-serif;color:var(--mute);
+}
+.mapmsg > div{max-width:46ch}
+.mapmsg b{
+  display:block;color:var(--paper);font:600 21px/1.2 var(--cond);
+  letter-spacing:.02em;margin-bottom:8px;
+}
+.mapmsg-t{margin-top:14px}
 
 .legend{
   position:absolute;left:14px;bottom:14px;z-index:5;
   display:flex;flex-direction:column;gap:6px;pointer-events:none;
 }
-.legend span{
+/* direct child only — the runtime text slots are spans too, and they must not
+   each grow a plate of their own */
+.legend > span{
   display:inline-flex;align-items:center;gap:8px;align-self:flex-start;
   background:rgba(15,24,34,.82);border:1px solid rgba(51,66,79,.8);border-radius:6px;
   padding:5px 10px;font-size:12.5px;color:var(--lede);
@@ -147,6 +201,12 @@ body:has(#tab-walk[aria-selected=true]) .maparea::after{
 .lg-permit{background:var(--orange);box-shadow:0 0 0 2px #fff}
 .lg-open{background:var(--blue)}
 .lg-sel{background:var(--green);box-shadow:0 0 0 2px #fff}
+/* city screen: one permit family, two weights, plus the box around a group */
+.lg-solo{background:var(--orange);opacity:.5;width:7px;height:7px}
+.lg-box{
+  width:15px;height:10px;border-radius:2px;
+  background:rgba(255,107,26,.16);border:1px solid #FF9B57;
+}
 /* the two history steps are drawn as crosses on the map, so the legend shows a
    cross too — a dot here would promise a marker the map never draws */
 .legend i.lg-x{
@@ -248,11 +308,14 @@ button.ghost:hover{border-color:#4A5D70}
 .note{margin:0 0 12px;color:var(--mute);font-size:13.5px;line-height:1.6}
 .atcost{margin:0 0 10px;color:var(--lede);font-size:14.5px;line-height:1.55;font-weight:500}
 .provenance{margin:0;font:500 12px/1 var(--cond);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+/* only appears when the snapshot has aged past STALE_DAYS in page.js */
+.staleness{margin:8px 0 0;color:var(--orange);font-size:13px;line-height:1.45}
 
 /* -------------------------------------------------------------- map extras */
 .pop{font:14px Barlow;color:var(--paper)}
 .pop b{display:block;font-size:15px;margin-bottom:3px}
 .pop .m{color:var(--mute);font-size:13px;margin-bottom:6px}
+.pop .m.solo{margin:7px 0 0}
 .mapboxgl-popup-content{background:var(--slate);border:1px solid var(--line);border-radius:8px}
 .mapboxgl-popup-tip{border-top-color:var(--slate);border-bottom-color:var(--slate)}
 .mapboxgl-popup-close-button{color:var(--mute);font-size:18px}
@@ -270,9 +333,11 @@ button.ghost:hover{border-color:#4A5D70}
 
   .stage{display:block;height:auto;border-bottom:0}
   .maparea{position:relative;height:46vh;min-height:300px}
+  /* on the city screen the map is the whole page — give it the room */
+  body[data-screen="city"] .maparea{height:66vh;min-height:380px}
   /* walking happens on foot, not on a map — give the phone the list */
-  body:has(#tab-walk[aria-selected=true]) .maparea{display:none}
-  .legend span{font-size:11.5px;padding:4px 8px}
+  body[data-screen="cluster"]:has(#tab-walk[aria-selected=true]) .maparea{display:none}
+  .legend > span{font-size:11.5px;padding:4px 8px}
 
   #panel{display:block;overflow:visible;border-left:0;border-top:1px solid var(--line)}
   .pane{display:block;overflow:visible}  /* the page scrolls, not a nested box */
@@ -290,7 +355,7 @@ button.ghost:hover{border-color:#4A5D70}
 /* ------------------------------------------------------------------ print */
 @media print{
   body{background:#fff;color:#000;font-size:12.5px}
-  .controls,.maparea,.foot,.wordmark,.lede{display:none}
+  .controls,.maparea,.foot,.wordmark,.lede,.notice{display:none}
   .top{padding:0 0 10px}
   .built,.dateline{color:#000}
   h1{font-size:26pt}
@@ -309,7 +374,7 @@ button.ghost:hover{border-color:#4A5D70}
   .row.pick::before{border-color:#999}
   .row.on::before{background:#000;border-color:#000}
   .endnote{padding:14px 0 0;max-width:none}
-  .note,.atcost,.provenance{color:#000}
+  .note,.atcost,.provenance,.staleness{color:#000}
 }
 
 /* --------------------------------------------------------------- fallback */
