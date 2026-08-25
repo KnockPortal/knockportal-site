@@ -10,7 +10,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Kadosh Roofing — roofing permits in San Francisco</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.6.0/mapbox-gl.css" rel="stylesheet">
-<link href="/sf/page.css?v=47f04d84e947" rel="stylesheet">
+<link href="/sf/page.css?v=6894b4130ea7" rel="stylesheet">
 </head>
 <!-- page.js flips data-screen between "city" and "cluster"; the stylesheet
      reads it. The markup of both screens ships in one document. -->
@@ -53,17 +53,25 @@
 <div class="stage">
   <div class="maparea">
     <div id="map"></div>
-    <div class="legend" id="legend-city">
-      <span><i class="lg-permit"></i>roofing permit with neighbouring permits around it</span>
-      <span><i class="lg-solo"></i>single permit, nothing around it to work with</span>
-      <span><i class="lg-box"></i>a group &mdash; click it to open the block</span>
-    </div>
-    <div class="legend" id="legend-cluster">
-      <span><i class="lg-permit"></i>roofing permit issued <span class="win"></span></span>
-      <span><i class="lg-open"></i>no qualifying roofing permit in <span class="yrs"></span> years of public records</span>
-      <span><i class="lg-sel"></i>picked for this mailing</span>
-      <span><i class="lg-x lg-recent"></i>reroofed since <span class="rsince"></span></span>
-      <span><i class="lg-x lg-done"></i>reroofed earlier, within <span class="yrs"></span> years</span>
+    <!-- The box is the anchor in the corner; the button sits under the list so
+         the list grows upward off it. On a phone the list starts folded away —
+         five rows of key cover half a 46vh map. Desktop never sees the button. -->
+    <div class="legendbox">
+      <div class="legend" id="legend-city">
+        <span><i class="lg-permit"></i>roofing permit with neighbouring permits around it</span>
+        <span><i class="lg-solo"></i>single permit, nothing around it to work with</span>
+        <span><i class="lg-box"></i>a group &mdash; click it to open the block</span>
+      </div>
+      <div class="legend" id="legend-cluster">
+        <span><i class="lg-permit"></i>roofing permit issued <span class="win"></span></span>
+        <span><i class="lg-open"></i>no qualifying roofing permit in <span class="yrs"></span> years of public records</span>
+        <span><i class="lg-sel"></i>picked for this mailing</span>
+        <span><i class="lg-x lg-recent"></i>reroofed since <span class="rsince"></span></span>
+        <span><i class="lg-x lg-done"></i>reroofed earlier, within <span class="yrs"></span> years</span>
+      </div>
+      <button class="legend-toggle" id="legend-toggle" type="button" aria-expanded="false">
+        <i class="lg-permit" aria-hidden="true"></i>Key
+      </button>
     </div>
   </div>
 
@@ -107,6 +115,6 @@ const COMPANY      = "Kadosh Roofing";
 const SLUG         = "kadosh-roofing";
 const DATA_BASE    = 'https://hxvxklqagzqxlfjfxnno.supabase.co/storage/v1/object/public/data/';
 </script>
-<script src="/sf/page.js?v=47f04d84e947"></script>
+<script src="/sf/page.js?v=6894b4130ea7"></script>
 </body>
 </html>

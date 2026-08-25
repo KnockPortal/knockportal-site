@@ -38,7 +38,13 @@ const STALE_DAYS = 7;
 const MONTHS = ['January','February','March','April','May','June','July',
                 'August','September','October','November','December'];
 
-const CITY_PAD = {top:56, bottom:56, left:56, right:56};
+/* the phone breakpoint, kept in step with the one in page.css by hand */
+const PHONE_Q = '(max-width: 920px)';
+const isPhone = () => !!(window.matchMedia && window.matchMedia(PHONE_Q).matches);
+
+/* A run whose groups all sit in one district would otherwise open at street
+   level, which reads as a bug rather than as a quiet month. */
+const CITY_MAX_ZOOM = 14;
 const CITY_LAYERS    = ['city-box-fill','city-box-line','city-solo','city-in'];
 const CLUSTER_LAYERS = ['nb-dots','rr-x','rr-hit'];
 
@@ -208,12 +214,29 @@ function mapFailed(why){
       : 'Reply to the email this page came with and we will send the list directly.');
 }
 
-function cityBounds(){
+function boundsOf(list){
   const b = new mapboxgl.LngLatBounds();
-  PERMITS.forEach(p => {
+  list.forEach(p => {
     if (typeof p.lon === 'number' && typeof p.lat === 'number') b.extend([p.lon, p.lat]);
   });
   return b;
+}
+
+/* The opening frame is the groups, not every permit. Singles scatter from the
+   Marin end of the bridge down past the county line, and fitting all of them
+   pushes the city itself into a third of the screen with the boxes too small to
+   read — and the boxes are the offer. The singles are still drawn in full; some
+   of them start one drag outside the frame, which is not the same as missing. */
+function cityBounds(){
+  const grouped = boundsOf(PERMITS.filter(inCluster));
+  if (!grouped.isEmpty()) return grouped;
+  return boundsOf(PERMITS);          // no groups this run: show what there is
+}
+
+/* A phone gives up far more of its map to a padding than a desktop does. */
+function cityPad(){
+  return isPhone() ? {top:20, bottom:20, left:20, right:20}
+                   : {top:56, bottom:56, left:56, right:56};
 }
 
 /* The map is built after the data lands, so the opening view is the extent of
@@ -223,7 +246,7 @@ function initMap(){
   const b = cityBounds();
   const view = b.isEmpty()
     ? {center:[-122.4437, 37.7590], zoom:11.4}
-    : {bounds:b, fitBoundsOptions:{padding:CITY_PAD, maxZoom:15}};
+    : {bounds:b, fitBoundsOptions:{padding:cityPad(), maxZoom:CITY_MAX_ZOOM}};
   try {
     map = new mapboxgl.Map(Object.assign({
       container:'map', style:'mapbox://styles/mapbox/satellite-streets-v12',
@@ -260,6 +283,9 @@ function initMap(){
   map.on('style.load', ready);
   map.on('load', ready);
   if (map.isStyleLoaded()) ready();
+  /* the key does not take pointer events, so a tap that looks like it landed on
+     the key lands on the map instead — fold it back rather than ignore it */
+  map.on('click', () => setLegend(false));
   /* the panel changes width between modes, and disappears entirely on the city
      screen; Mapbox only watches the window, so tell it when its own box moves */
   if (window.ResizeObserver)
@@ -351,7 +377,7 @@ function paintCity(){
   setVis(CITY_LAYERS, true);
   clearPins();
   const b = cityBounds();
-  if (!b.isEmpty()) map.fitBounds(b, {padding:CITY_PAD, duration:420, maxZoom:15});
+  if (!b.isEmpty()) map.fitBounds(b, {padding:cityPad(), duration:420, maxZoom:CITY_MAX_ZOOM});
 }
 
 function wireCity(){
@@ -689,6 +715,17 @@ function toggle(a){
     map.getSource('nb').setData(fc(CUR.neighbours, x => ({sel: PICKED.has(x.a) ? 1 : 0})));
   if (MODE === 'mail') render();
 }
+
+/* ------------------------------------------------------------- the map key */
+/* Folded on a phone, always open on a desktop — the stylesheet decides which,
+   this only carries the state. Wired at the top level, like setMode below: the
+   button is in the markup whether or not any data ever arrives. */
+function setLegend(open){
+  document.body.dataset.legend = open ? 'open' : 'shut';
+  $('legend-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+$('legend-toggle').onclick = () => setLegend(document.body.dataset.legend !== 'open');
+setLegend(false);
 
 $('tab-walk').onclick = () => setMode('walk');
 $('tab-mail').onclick = () => setMode('mail');

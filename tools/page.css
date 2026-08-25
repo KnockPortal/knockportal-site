@@ -185,10 +185,16 @@ body[data-screen="cluster"]:has(#tab-walk[aria-selected=true]) .maparea::after{
 }
 .mapmsg-t{margin-top:14px}
 
-.legend{
+/* The corner anchor. pointer-events stays off here and is handed back to the
+   toggle alone: an expanded key must not eat the drag and the pinch under it. */
+.legendbox{
   position:absolute;left:14px;bottom:14px;z-index:5;
-  display:flex;flex-direction:column;gap:6px;pointer-events:none;
+  display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  pointer-events:none;
 }
+.legend{display:flex;flex-direction:column;gap:6px}
+/* folded state on phones; the desktop never renders this button */
+.legend-toggle{display:none}
 /* direct child only — the runtime text slots are spans too, and they must not
    each grow a plate of their own */
 .legend > span{
@@ -332,12 +338,34 @@ button.ghost:hover{border-color:#4A5D70}
   .tab-s{font-size:12px}
 
   .stage{display:block;height:auto;border-bottom:0}
+  /* the cluster screen keeps 46vh: the address list starts right under the map
+     and has to be on screen without a scroll */
   .maparea{position:relative;height:46vh;min-height:300px}
-  /* on the city screen the map is the whole page — give it the room */
-  body[data-screen="city"] .maparea{height:66vh;min-height:380px}
+  /* the city screen has no list under the map — the height that leaves room for
+     one would just leave a hole instead. svh so the Safari toolbars sliding in
+     cannot push the bottom of the map past the fold. */
+  body[data-screen="city"] .maparea{height:70vh;height:70svh;min-height:420px}
   /* walking happens on foot, not on a map — give the phone the list */
   body[data-screen="cluster"]:has(#tab-walk[aria-selected=true]) .maparea{display:none}
   .legend > span{font-size:11.5px;padding:4px 8px}
+
+  /* ------------------------------------------------------------- map key */
+  /* Folded by default: five rows of key cover half the map on a phone, and the
+     map is the thing he came to look at. */
+  .legendbox{bottom:calc(12px + env(safe-area-inset-bottom))}
+  .legend{display:none}
+  body[data-legend="open"][data-screen="city"] #legend-city{display:flex}
+  body[data-legend="open"][data-screen="cluster"] #legend-cluster{display:flex}
+  .legend-toggle{
+    display:inline-flex;align-items:center;gap:7px;
+    pointer-events:auto;                       /* the one thing that takes taps */
+    background:rgba(15,24,34,.86);border:1px solid rgba(51,66,79,.9);border-radius:6px;
+    padding:7px 11px;color:var(--lede);cursor:pointer;
+    font:600 12px/1 var(--cond);letter-spacing:.14em;text-transform:uppercase;
+    backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  }
+  .legend-toggle::after{content:'\25B4';font-size:11px;color:var(--mute);margin-left:1px}
+  body[data-legend="open"] .legend-toggle::after{content:'\25BE'}
 
   #panel{display:block;overflow:visible;border-left:0;border-top:1px solid var(--line)}
   .pane{display:block;overflow:visible}  /* the page scrolls, not a nested box */
