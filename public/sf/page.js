@@ -22,6 +22,7 @@
      #count    line under the lists
      #clear #dl  buttons
      #dateline #lede-city #lede-cluster #notice #provenance #staleness
+     #zoomnote  empty plate over the map; the neighbour layer's own message
      .yrs .win .rsince    runtime text slots, filled wherever they appear
 
    Classes this file emits (style them freely, don't rename):
@@ -42,11 +43,58 @@ const MONTHS = ['January','February','March','April','May','June','July',
 const PHONE_Q = '(max-width: 920px)';
 const isPhone = () => !!(window.matchMedia && window.matchMedia(PHONE_Q).matches);
 
+/* A neighbour dot stands for one house, and houses stand metres apart — so the
+   dot is sized on the ground, not on the screen. A radius in pixels turns a
+   dense block into an unbroken ribbon at exactly the zoom where the block is
+   worth reading. The ground size is a share of that cluster's own measured
+   spacing, so a dense street and a sparse hillside both come out with a gap
+   between dots; no size in metres is fixed here by decree. */
+const DOT_FRACTION = 0.7;   /* share of the median step one dot takes up       */
+const MIN_DOT_PX   = 6;     /* smallest on-screen diameter still worth drawing */
+const MAX_DOT_M    = 12;    /* ceiling on the ground diameter, in metres       */
+const ZOOM_FLOOR   = 13;    /* lowest the computed cutoff may sit              */
+const ZOOM_CEIL    = 18;    /* highest the computed cutoff may sit             */
+
+/* Zoom levels of headroom the opening frame keeps above the cutoff. The cutoff
+   is where a dot has shrunk to the smallest size we are willing to call
+   readable, so opening exactly on it would hand every cluster too wide for its
+   frame the worst view we allow — and hand it that every time, not as the
+   exception. This belongs to the frame and to nothing else: the layers and the
+   note are still measured against the bare cutoff, and the play between the
+   two is what lets him pull back a little before the dots go. */
+const OPEN_ZOOM_MARGIN = 0.5;
+
+/* Metres per pixel at zoom 0 on the equator: Web Mercator over 512-px tiles.
+   Every metre-to-pixel conversion on this page goes through it. */
+const M_PER_PX_Z0 = 78271.51696;
+/* Metres in a degree of latitude, and in a degree of longitude at the equator:
+   the scale that turns a pair of coordinates into a distance on the ground. */
+const M_PER_DEG = 111320;
+/* Measuring the spacing is quadratic in the length of the list, which is
+   nothing at a few hundred addresses. Past this the median is read off a
+   random sample: a cost guard, not a different answer. */
+const STEP_SAMPLE_MAX = 2000;
+
+/* shown over a live map when the dots have been dropped for being too small */
+const ZOOM_NOTE = 'Zoom in to pick houses — at this distance one dot would cover several of them.';
+
+/* Sent as the event data of every camera move this page orders, and handed back
+   by Mapbox on every event that move fires. It is the whole of how a flight the
+   page started is told apart from a wheel, a drag or a pinch — which carry an
+   originalEvent and never carry this. Nothing latches on it, so a gesture that
+   cuts a flight short needs no unwinding: its own events simply arrive without
+   the marker. */
+const FLIGHT = {kpFlight: true};
+
 /* A run whose groups all sit in one district would otherwise open at street
    level, which reads as a bug rather than as a quiet month. */
 const CITY_MAX_ZOOM = 14;
+const MAP_MAX_ZOOM     = 19;    /* the map's own ceiling */
+const CLUSTER_MAX_ZOOM = 17.4;  /* how far a cluster frame may close in */
 const CITY_LAYERS    = ['city-box-fill','city-box-line','city-solo','city-in'];
-const CLUSTER_LAYERS = ['nb-dots','rr-x','rr-hit'];
+/* the drawn dot and the target it is caught by come and go together */
+const NB_LAYERS      = ['nb-dots','nb-hit'];
+const CLUSTER_LAYERS = ['nb-dots','nb-hit','rr-x','rr-hit'];
 
 const DATA_ERROR = 'We could not reach the permit data. Reply to the email this '
                  + 'page came with and we will send the list directly.';
@@ -71,6 +119,18 @@ let map = null;
 let mapReady = false;
 let mapDead = null;         // the reason the map is not there, kept for rewording
 let cityPainted = false;
+
+/* Measured from the current cluster's own addresses when it lands; every
+   metre-based map expression below reads these and nothing else. */
+let NB_STEP_M = 0;          // median distance to the nearest other neighbour
+let NB_DOT_M  = 0;          // ground diameter of a drawn dot
+let NB_HIT_M  = 0;          // ground diameter of the target it is caught by
+let NB_MIN_Z  = ZOOM_FLOOR; // under this zoom the neighbour layers stay off
+let NB_LAT    = 37.76;      // cluster latitude, for the metre-to-pixel scale
+/* what the two neighbour layers were last set to. A zoom fires on every frame
+   of a flight and every notch of a wheel; without this, each of those frames
+   would write a layout property that already says what it is being told. */
+let NB_SHOWN  = null;       // null until either screen has set it once
 
 const $ = id => document.getElementById(id);
 const fmt = d => d ? new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
@@ -250,7 +310,7 @@ function initMap(){
   try {
     map = new mapboxgl.Map(Object.assign({
       container:'map', style:'mapbox://styles/mapbox/satellite-streets-v12',
-      minZoom:10, maxZoom:19, attributionControl:true, cooperativeGestures:true
+      minZoom:10, maxZoom:MAP_MAX_ZOOM, attributionControl:true, cooperativeGestures:true
     }, view));
     map.addControl(new mapboxgl.NavigationControl({showCompass:false}), 'top-right');
   } catch (e) {
@@ -286,6 +346,13 @@ function initMap(){
   /* the key does not take pointer events, so a tap that looks like it landed on
      the key lands on the map instead — fold it back rather than ignore it */
   map.on('click', () => setLegend(false));
+  /* The neighbour dots have a zoom under which they stop meaning one house
+     each. 'zoom' fires all the way through a wheel, a pinch or a flight, so the
+     layers follow the camera in both directions rather than being decided once
+     at load. Only a flight the page ordered holds the note back, and only while
+     it is in the air: 'moveend' is the landing and answers with the truth. */
+  map.on('zoom', e => applyDotVisibility(!!(e && e.kpFlight)));
+  map.on('moveend', () => applyDotVisibility(false));
   /* the panel changes width between modes, and disappears entirely on the city
      screen; Mapbox only watches the window, so tell it when its own box moves */
   if (window.ResizeObserver)
@@ -374,10 +441,13 @@ function paintCity(){
   }
   CITY_LAYERS.forEach(id => { if (map.getLayer(id)) map.moveLayer(id); });
   setVis(CLUSTER_LAYERS, false);
+  NB_SHOWN = false;       // the line above covers the neighbour layers as well
   setVis(CITY_LAYERS, true);
   clearPins();
+  applyDotVisibility();   // the city screen never carries the neighbour note
   const b = cityBounds();
-  if (!b.isEmpty()) map.fitBounds(b, {padding:cityPad(), duration:420, maxZoom:CITY_MAX_ZOOM});
+  if (!b.isEmpty())
+    map.fitBounds(b, {padding:cityPad(), duration:420, maxZoom:CITY_MAX_ZOOM}, FLIGHT);
 }
 
 function wireCity(){
@@ -474,6 +544,112 @@ function fc(list, extra){
   }))};
 }
 
+/* ------------------------------------------- neighbour dots: ground sizing */
+/* Flat distance in metres, cos(lat) keeping longitude honest. Across a handful
+   of city blocks the error is far under the width of a house. */
+function metres(a, b){
+  const k = Math.cos((a.lat + b.lat) / 2 * Math.PI / 180);
+  const dx = (a.lon - b.lon) * k, dy = a.lat - b.lat;
+  return Math.sqrt(dx*dx + dy*dy) * M_PER_DEG;
+}
+
+/* The step of this block: for every address the distance to the nearest other
+   address, and the median of those. That number is the only thing that decides
+   how big a dot is — it comes out of the data, never out of a constant. */
+function medianStep(list){
+  let pts = (list || []).filter(p => typeof p.lon === 'number' && typeof p.lat === 'number');
+  if (pts.length < 2) return 0;
+  if (pts.length > STEP_SAMPLE_MAX){
+    pts = pts.slice();
+    for (let i = 0; i < STEP_SAMPLE_MAX; i++){        // partial Fisher–Yates
+      const j = i + Math.floor(Math.random() * (pts.length - i));
+      const t = pts[i]; pts[i] = pts[j]; pts[j] = t;
+    }
+    pts = pts.slice(0, STEP_SAMPLE_MAX);
+  }
+  const ds = [];
+  for (let i = 0; i < pts.length; i++){
+    let best = Infinity;
+    for (let j = 0; j < pts.length; j++){
+      if (i === j) continue;
+      const d = metres(pts[i], pts[j]);
+      if (d < best) best = d;
+    }
+    if (isFinite(best)) ds.push(best);
+  }
+  if (!ds.length) return 0;
+  ds.sort((a, b) => a - b);
+  const m = ds.length >> 1;
+  return ds.length % 2 ? ds[m] : (ds[m-1] + ds[m]) / 2;
+}
+
+function mPerPx(z, lat){
+  return M_PER_PX_Z0 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
+}
+
+/* Mapbox takes circle-radius in pixels and in nothing else. A ramp with base 2
+   doubles the pixel radius on every zoom step, which is exactly what a fixed
+   size on the ground does. The two stops are the same metre value read at the
+   two ends of the range the layer is ever drawn in, so what runs between them
+   is the ground size itself, not an approximation of it. */
+function groundRadius(diameterM, lat){
+  const px = z => (diameterM / 2) / mPerPx(z, lat);
+  return ['interpolate', ['exponential', 2], ['zoom'],
+          ZOOM_FLOOR, px(ZOOM_FLOOR), MAP_MAX_ZOOM, px(MAP_MAX_ZOOM)];
+}
+
+/* The zoom at which a dot of this ground size has shrunk to MIN_DOT_PX across.
+   Under it the dots have stopped standing for houses and started standing for
+   the street they sit on, so the layer is not drawn at all. */
+function dotFloorZoom(diameterM, lat){
+  const z = Math.log2(MIN_DOT_PX * M_PER_PX_Z0 * Math.cos(lat * Math.PI / 180) / diameterM);
+  return Math.min(Math.max(z, ZOOM_FLOOR), ZOOM_CEIL);
+}
+
+/* Everything the neighbour layers need in metres, measured once per cluster
+   off that cluster's own addresses. */
+function measureCluster(){
+  const nb = (CUR && CUR.neighbours) || [];
+  const lats = nb.filter(p => typeof p.lat === 'number').map(p => p.lat);
+  NB_LAT = lats.length ? lats.reduce((s, v) => s + v, 0) / lats.length : 37.76;
+  NB_STEP_M = medianStep(nb);
+  /* A single address, or a list stacked on one point, has no step to read:
+     fall back to the ceiling rather than to a dot of zero metres. */
+  const step = NB_STEP_M > 0 ? NB_STEP_M : MAX_DOT_M / DOT_FRACTION;
+  NB_DOT_M = Math.min(step * DOT_FRACTION, MAX_DOT_M);
+  /* Caught at half the step: as wide as a target can get before it starts
+     answering for the house next door. Always at least the drawn dot, which
+     takes DOT_FRACTION of the step and DOT_FRACTION is under one. */
+  NB_HIT_M = step;
+  NB_MIN_Z = dotFloorZoom(NB_DOT_M, NB_LAT);
+}
+
+/* Called on every zoom frame, so it writes nothing it is not changing. */
+function setNote(on){
+  const el = $('zoomnote');
+  if (!el || el.hidden === !on) return;
+  if (on) el.textContent = ZOOM_NOTE;
+  el.hidden = !on;
+}
+
+/* Both neighbour layers answer to the zoom, not to the load, so this runs on
+   every zoom event and reads the same going out and coming back. `flying` says
+   the camera is mid-flight on this page's own orders; a wheel, a drag and a
+   pinch never set it. */
+function applyDotVisibility(flying){
+  const live = !!map && mapReady && !mapDead && SCREEN === 'cluster' && !!CUR;
+  if (!live){ setNote(false); return; }   // city screen, dead map, dead data
+  const show = map.getZoom() >= NB_MIN_Z;
+  if (NB_SHOWN !== show){ NB_SHOWN = show; setVis(NB_LAYERS, show); }
+  /* The note belongs to the screen where the map is the picking surface: walk
+     the block picks off the list, and on a phone that map is not even rendered.
+     It is also held back for the length of a flight the page ordered — the
+     answer at the far end is the one worth reading, and a note that blinks
+     through every cluster opening is noise. A gesture gets no such grace: what
+     the man is doing with his own hand, he is owed an answer to at once. */
+  setNote(!show && MODE !== 'walk' && !flying);
+}
+
 function paintLayers(){
   if (!map || !mapReady || SCREEN !== 'cluster' || !CUR) return;
   const nb = {type:'geojson', data: fc(CUR.neighbours, x => ({sel: PICKED.has(x.a) ? 1 : 0}))};
@@ -481,18 +657,31 @@ function paintLayers(){
 
   if (map.getSource('nb')) map.getSource('nb').setData(nb.data); else {
     map.addSource('nb', nb);
+    /* Draw small, catch large — the same trade rr-hit makes, for the layer
+       people actually click. It carries the click so the drawn dot can stay
+       the size the block says it should be. */
+    map.addLayer({id:'nb-hit', type:'circle', source:'nb', paint:{
+      'circle-radius': groundRadius(NB_HIT_M, NB_LAT),
+      'circle-color':'#000', 'circle-opacity':0
+    }});
     map.addLayer({id:'nb-dots', type:'circle', source:'nb', paint:{
-      'circle-radius':['interpolate',['linear'],['zoom'],13,3,16,6.2,19,10.5],
+      'circle-radius': groundRadius(NB_DOT_M, NB_LAT),
       'circle-color':['case',['==',['get','sel'],1],'#4ED08A','#5FB0E8'],
       'circle-opacity':0.85,
       'circle-stroke-width':['case',['==',['get','sel'],1],2,1],
       'circle-stroke-color':['case',['==',['get','sel'],1],'#FFFFFF','#0F1720'],
       'circle-stroke-opacity':0.85
     }});
-    map.on('click','nb-dots', e => toggle(e.features[0].properties.a));
-    map.on('mouseenter','nb-dots', () => map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','nb-dots', () => map.getCanvas().style.cursor='');
+    map.on('click','nb-hit', e => toggle(e.features[0].properties.a));
+    map.on('mouseenter','nb-hit', () => map.getCanvas().style.cursor='pointer');
+    map.on('mouseleave','nb-hit', () => map.getCanvas().style.cursor='');
   }
+  /* The layers are built once and then only fed; the next cluster has a step of
+     its own, so the two metre-based radii are re-read on every paint. */
+  if (map.getLayer('nb-dots'))
+    map.setPaintProperty('nb-dots', 'circle-radius', groundRadius(NB_DOT_M, NB_LAT));
+  if (map.getLayer('nb-hit'))
+    map.setPaintProperty('nb-hit', 'circle-radius', groundRadius(NB_HIT_M, NB_LAT));
 
   if (map.getSource('rr')) map.getSource('rr').setData(rr.data); else {
     map.addSource('rr', rr);
@@ -535,9 +724,12 @@ function paintLayers(){
   }
   setVis(CITY_LAYERS, false);
   setVis(CLUSTER_LAYERS, true);
-  if (map.getLayer('rr-hit')) map.moveLayer('rr-hit');
-  if (map.getLayer('rr-x')) map.moveLayer('rr-x');
-  if (map.getLayer('nb-dots')) map.moveLayer('nb-dots');
+  NB_SHOWN = true;        // the line above covers the neighbour layers as well
+  /* bottom to top. The neighbour target goes under everything: it is the widest
+     thing on the map and must not sit over a cross it does not answer for. */
+  ['nb-hit','rr-hit','rr-x','nb-dots'].forEach(id => {
+    if (map.getLayer(id)) map.moveLayer(id);
+  });
 
   clearPins();
   CUR.permits.forEach(p => {
@@ -561,15 +753,36 @@ function paintLayers(){
   const b = new mapboxgl.LngLatBounds();
   CUR.permits.forEach(p => b.extend([p.lon,p.lat]));
   if (b.isEmpty()) CUR.neighbours.forEach(n => b.extend([n.lon,n.lat]));
-  if (!b.isEmpty()) map.fitBounds(b, {padding:{top:90,bottom:90,left:90,right:90},
-                                      duration:400, maxZoom:17.4});
+  if (!b.isEmpty()){
+    const pad = {top:90, bottom:90, left:90, right:90};
+    /* The cutoff outranks the frame. Opening under it would hand him a map with
+       no houses on it and a note explaining their absence — so a wide cluster
+       opens above the cutoff instead, centred on the same bounds, with some of
+       its permits outside the frame. That is the trade the neighbour list
+       already makes one paragraph up, taken one step further. Above, not on:
+       OPEN_ZOOM_MARGIN keeps the opening view off the floor of what is legible
+       and leaves him room to pull back before the dots go. The margin never
+       leaves this block — applyDotVisibility knows only NB_MIN_Z. */
+    const cam = map.cameraForBounds(b, {padding:pad, maxZoom:CLUSTER_MAX_ZOOM});
+    const fitZoom = cam ? Math.min(cam.zoom, CLUSTER_MAX_ZOOM) : null;
+    const openZoom = Math.min(NB_MIN_Z + OPEN_ZOOM_MARGIN, MAP_MAX_ZOOM);
+    if (fitZoom !== null && fitZoom < openZoom)
+      map.easeTo({center:b.getCenter(), zoom:openZoom, duration:400}, FLIGHT);
+    else
+      map.fitBounds(b, {padding:pad, duration:400, maxZoom:CLUSTER_MAX_ZOOM}, FLIGHT);
+  }
+  /* the camera is still standing at the city's zoom for one more frame; the
+     flight it was just sent on is what the answer should be read from */
+  applyDotVisibility(true);
 }
 
 /* ---------------------------------------------------------------- panel */
 function load(id){
   fetch(snap('cluster_' + id + '.json')).then(ok).then(j => {
     if (String(CURID) !== String(id)) return;   // he moved on while it was in flight
-    CUR = j; PICKED.clear(); MAILN = null; paintLayers(); render();
+    /* the dots are sized off this cluster's own spacing, so it is measured
+       before anything is drawn from it */
+    CUR = j; PICKED.clear(); MAILN = null; measureCluster(); paintLayers(); render();
     $('pane').scrollTop = 0;
   }).catch(() => {
     $('pane').innerHTML = '<p class="hint">' + DATA_ERROR + '</p>';
@@ -734,6 +947,7 @@ function setMode(m){
   $('tab-walk').setAttribute('aria-selected', m==='walk');
   $('tab-mail').setAttribute('aria-selected', m==='mail');
   render();
+  applyDotVisibility();   // the note belongs to postcards only
 }
 /* the markup ships with postcards pre-selected; this keeps aria-selected, the
    :has() rules in the stylesheet and MODE from ever disagreeing. It runs before
