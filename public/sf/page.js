@@ -43,12 +43,19 @@ const MONTHS = ['January','February','March','April','May','June','July',
 const PHONE_Q = '(max-width: 920px)';
 const isPhone = () => !!(window.matchMedia && window.matchMedia(PHONE_Q).matches);
 
-/* A neighbour dot stands for one house, and houses stand metres apart — so the
-   dot is sized on the ground, not on the screen. A radius in pixels turns a
-   dense block into an unbroken ribbon at exactly the zoom where the block is
-   worth reading. The ground size is a share of that cluster's own measured
-   spacing, so a dense street and a sparse hillside both come out with a gap
-   between dots; no size in metres is fixed here by decree. */
+/* Two addresses closer together than this are two doors under one roof, not two
+   houses: the city geocodes a duplex and its unit letter — 700 and 700 A — to
+   the one building point. Well under the step of an SF block, which runs around
+   7.6 m, and well over the last digit the geocoder ever disagrees with itself
+   by. The map's unit is the roof, because the roof is what gets replaced. */
+const SAME_BUILDING_M = 2;
+
+/* A neighbour dot stands for one building, and buildings stand metres apart —
+   so the dot is sized on the ground, not on the screen. A radius in pixels
+   turns a dense block into an unbroken ribbon at exactly the zoom where the
+   block is worth reading. The ground size is a share of that cluster's own
+   measured spacing, so a dense street and a sparse hillside both come out with
+   a gap between dots; no size in metres is fixed here by decree. */
 const DOT_FRACTION = 0.7;   /* share of the median step one dot takes up       */
 const MIN_DOT_PX   = 6;     /* smallest on-screen diameter still worth drawing */
 const MAX_DOT_M    = 12;    /* ceiling on the ground diameter, in metres       */
@@ -120,9 +127,15 @@ let mapReady = false;
 let mapDead = null;         // the reason the map is not there, kept for rewording
 let cityPainted = false;
 
-/* Measured from the current cluster's own addresses when it lands; every
+/* The cluster's addresses folded onto the roofs they sit on. The map draws,
+   catches and selects by these; the panel, the counter and the CSV go on
+   dealing in addresses, because a postcard goes to an address. */
+let NB_BUILDINGS = [];      // {lon, lat, addrs:[…]} — one entry per roof
+let NB_OF_ADDR = new Map(); // address -> the building it belongs to
+
+/* Measured from the current cluster's own buildings when it lands; every
    metre-based map expression below reads these and nothing else. */
-let NB_STEP_M = 0;          // median distance to the nearest other neighbour
+let NB_STEP_M = 0;          // median distance to the nearest other building
 let NB_DOT_M  = 0;          // ground diameter of a drawn dot
 let NB_HIT_M  = 0;          // ground diameter of the target it is caught by
 let NB_MIN_Z  = ZOOM_FLOOR; // under this zoom the neighbour layers stay off
@@ -553,8 +566,69 @@ function metres(a, b){
   return Math.sqrt(dx*dx + dy*dy) * M_PER_DEG;
 }
 
-/* The step of this block: for every address the distance to the nearest other
-   address, and the median of those. That number is the only thing that decides
+/* Fold the addresses onto the roofs they share, before anything is measured or
+   drawn from them. On #c127 sixty-three addresses out of a hundred sat on top
+   of another one, which is what a duplex looks like after geocoding: two doors,
+   two postcards, one roof and one point.
+
+   Leader grouping, deliberately not single linkage. An address joins a building
+   only if it is within SAME_BUILDING_M of that building's FIRST address — its
+   seed — never of whichever member happens to be nearest. That is the whole
+   defence against chaining: a terrace where each house sits two metres from the
+   next cannot fold into one group the length of the street, because the second
+   house is measured against the seed and not against its neighbour.
+
+   Two things follow, and the rest of the file leans on both. A building is at
+   most SAME_BUILDING_M across from its seed. And no two seeds are ever closer
+   to each other than SAME_BUILDING_M — a seed is only created when no existing
+   one was near enough — so with two buildings or more, the distance between the
+   nearest pair cannot be zero. The building's coordinate is its seed's for
+   exactly that reason: an average would drift and give that guarantee away.
+
+   Deterministic: the addresses are sorted before the first seed is picked, so
+   the same list always yields the same buildings in the same order. */
+function groupBuildings(list){
+  const pts = (list || []).filter(p => typeof p.lon === 'number' && typeof p.lat === 'number');
+  pts.sort((a, b) => a.lat - b.lat || a.lon - b.lon
+                  || String(a.a).localeCompare(String(b.a)));
+  const out = [];
+  /* Seeds are created in the sorted order, so their latitudes only ever climb:
+     one that has fallen out of range below stays out of range for every address
+     still to come, and the scan can start past it. */
+  const dLat = SAME_BUILDING_M / M_PER_DEG;
+  let first = 0;
+  pts.forEach(p => {
+    while (first < out.length && p.lat - out[first].lat > dLat) first++;
+    let home = null;
+    for (let k = first; k < out.length; k++){
+      if (metres(p, out[k]) < SAME_BUILDING_M){ home = out[k]; break; }
+    }
+    if (home) home.addrs.push(p.a);
+    else out.push({lon:p.lon, lat:p.lat, addrs:[p.a]});
+  });
+  return out;
+}
+
+/* One feature per building, carrying the addresses that share it. Mapbox
+   flattens anything that is not a scalar, so the list travels as JSON and is
+   read back where the click lands. */
+function nbFC(){
+  return {type:'FeatureCollection', features: NB_BUILDINGS.map(b => ({
+    type:'Feature', geometry:{type:'Point', coordinates:[b.lon, b.lat]},
+    properties:{
+      addrs: JSON.stringify(b.addrs), n: b.addrs.length,
+      /* green stands for a roof that is going to be mailed, so it waits until
+         every door under it is picked — a half-picked duplex is not one */
+      sel: b.addrs.every(a => PICKED.has(a)) ? 1 : 0
+    }
+  }))};
+}
+function pushNB(){
+  if (map && map.getSource('nb')) map.getSource('nb').setData(nbFC());
+}
+
+/* The step of this block: for every building the distance to the nearest other
+   building, and the median of those. That number is the only thing that decides
    how big a dot is — it comes out of the data, never out of a constant. */
 function medianStep(list){
   let pts = (list || []).filter(p => typeof p.lon === 'number' && typeof p.lat === 'number');
@@ -607,15 +681,21 @@ function dotFloorZoom(diameterM, lat){
 }
 
 /* Everything the neighbour layers need in metres, measured once per cluster
-   off that cluster's own addresses. */
+   off that cluster's own buildings. */
 function measureCluster(){
-  const nb = (CUR && CUR.neighbours) || [];
-  const lats = nb.filter(p => typeof p.lat === 'number').map(p => p.lat);
-  NB_LAT = lats.length ? lats.reduce((s, v) => s + v, 0) / lats.length : 37.76;
-  NB_STEP_M = medianStep(nb);
-  /* A single address, or a list stacked on one point, has no step to read:
-     fall back to the ceiling rather than to a dot of zero metres. */
-  const step = NB_STEP_M > 0 ? NB_STEP_M : MAX_DOT_M / DOT_FRACTION;
+  NB_BUILDINGS = groupBuildings((CUR && CUR.neighbours) || []);
+  NB_OF_ADDR = new Map();
+  NB_BUILDINGS.forEach(b => b.addrs.forEach(a => NB_OF_ADDR.set(a, b)));
+  NB_LAT = NB_BUILDINGS.length
+    ? NB_BUILDINGS.reduce((s, b) => s + b.lat, 0) / NB_BUILDINGS.length : 37.76;
+  NB_STEP_M = medianStep(NB_BUILDINGS);
+  /* One building has nothing to be too close to, so the fallback there is
+     harmless and any value will do. The condition is the count and not the
+     median on purpose: a zero median used to mean "addresses stacked on one
+     point" and bought the largest dot on the page for the densest block on the
+     map — the exact opposite of what a failed measurement should buy. Grouping
+     has made that reading impossible, and the count says so plainly. */
+  const step = NB_BUILDINGS.length >= 2 ? NB_STEP_M : MAX_DOT_M / DOT_FRACTION;
   NB_DOT_M = Math.min(step * DOT_FRACTION, MAX_DOT_M);
   /* Caught at half the step: as wide as a target can get before it starts
      answering for the house next door. Always at least the drawn dot, which
@@ -652,7 +732,7 @@ function applyDotVisibility(flying){
 
 function paintLayers(){
   if (!map || !mapReady || SCREEN !== 'cluster' || !CUR) return;
-  const nb = {type:'geojson', data: fc(CUR.neighbours, x => ({sel: PICKED.has(x.a) ? 1 : 0}))};
+  const nb = {type:'geojson', data: nbFC()};   // one feature per roof, not per door
   const rr = {type:'geojson', data: fc(CUR.reroofed, x => ({recent: (x.d && x.d >= RECENT_SINCE) ? 1 : 0}))};
 
   if (map.getSource('nb')) map.getSource('nb').setData(nb.data); else {
@@ -672,7 +752,7 @@ function paintLayers(){
       'circle-stroke-color':['case',['==',['get','sel'],1],'#FFFFFF','#0F1720'],
       'circle-stroke-opacity':0.85
     }});
-    map.on('click','nb-hit', e => toggle(e.features[0].properties.a));
+    map.on('click','nb-hit', e => toggleAddrs(addrsOf(e.features[0])));
     map.on('mouseenter','nb-hit', () => map.getCanvas().style.cursor='pointer');
     map.on('mouseleave','nb-hit', () => map.getCanvas().style.cursor='');
   }
@@ -834,15 +914,21 @@ function nearestPermit(n){
 function defaultN(){
   return Math.min(CUR.permits.length * 10, CUR.neighbours.length);
 }
+/* He asks for a number of postcards, and postcards go to addresses — but the
+   thing being chosen is a roof, measured from its own point to the nearest
+   permit. So buildings go in whole, nearest first, until the addresses under
+   them have covered the number: a duplex is never half-mailed. The last one in
+   can carry the total a door or two past what was typed, and the counter under
+   the list says so — it counts what is picked, not what was asked for. */
 function autoPick(n){
   PICKED.clear();
-  CUR.neighbours
-    .map(x => ({a: x.a, d: nearestPermit(x)}))
-    .sort((u, v) => u.d - v.d)
-    .slice(0, Math.max(0, n))
-    .forEach(x => PICKED.add(x.a));
-  if (map && map.getSource('nb'))
-    map.getSource('nb').setData(fc(CUR.neighbours, x => ({sel: PICKED.has(x.a) ? 1 : 0})));
+  const want = Math.max(0, n);
+  if (want > 0)
+    NB_BUILDINGS
+      .map((b, i) => ({b, i, d: nearestPermit(b)}))
+      .sort((u, v) => u.d - v.d || u.i - v.i)
+      .some(x => { x.b.addrs.forEach(a => PICKED.add(a)); return PICKED.size >= want; });
+  pushNB();
 }
 
 function render(){
@@ -921,12 +1007,33 @@ function render(){
   }
 }
 
+/* The list of addresses a map feature stands for, back out of the JSON it
+   travelled in. A feature that somehow arrives without one answers for nothing
+   rather than for everything. */
+function addrsOf(f){
+  try { const v = JSON.parse(f && f.properties && f.properties.addrs);
+        return Array.isArray(v) ? v : []; }
+  catch (e) { return []; }
+}
+
+/* One roof, one decision. 700 and 700 A are two postcards and one building, so
+   whichever of them is clicked — the dot on the map or either row in the list —
+   both move together. Fully picked comes off; anything less fills up. */
+function toggleAddrs(addrs){
+  if (!CUR || !addrs || !addrs.length) return;
+  const full = addrs.every(a => PICKED.has(a));
+  addrs.forEach(a => full ? PICKED.delete(a) : PICKED.add(a));
+  pushNB();
+  if (MODE === 'mail') render();
+}
+
+/* The panel still lists addresses, so this still takes one — and hands it to
+   its building. An address with no usable coordinates is on no roof and on no
+   map; it answers for itself alone. */
 function toggle(a){
   if (!CUR) return;
-  PICKED.has(a) ? PICKED.delete(a) : PICKED.add(a);
-  if (map && map.getSource('nb'))
-    map.getSource('nb').setData(fc(CUR.neighbours, x => ({sel: PICKED.has(x.a) ? 1 : 0})));
-  if (MODE === 'mail') render();
+  const b = NB_OF_ADDR.get(a);
+  toggleAddrs(b ? b.addrs : [a]);
 }
 
 /* ------------------------------------------------------------- the map key */
@@ -957,7 +1064,7 @@ setMode(MODE);
 $('clear').onclick = () => {
   if (!CUR) return;
   PICKED.clear();
-  if (map && map.getSource('nb')) map.getSource('nb').setData(fc(CUR.neighbours, () => ({sel:0})));
+  pushNB();
   render();
 };
 
