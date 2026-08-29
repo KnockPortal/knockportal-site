@@ -8,21 +8,28 @@ export default function TermsPage() {
         <p className="font-mono text-muted text-xs mb-8">Under legal review — final text from attorney before publication.</p>
         <div className="prose prose-invert prose-sm text-muted space-y-4 leading-relaxed">
           <p>
-            KnockPortal is an informational service providing access to public building-permit data.
-            We do not guarantee the quality, accuracy, or outcome of work performed by any contractor.
+            KnockPortal provides access to processed public building-permit records so that a
+            licensed contractor can decide where to direct their own marketing.
           </p>
           <p>
-            Contractor profiles are self-submitted. The accuracy of profile information is the
-            responsibility of the contractor. KnockPortal performs basic moderation but does not
-            verify licenses, insurance, or claims made by contractors.
+            KnockPortal does not introduce homeowners to contractors, does not sell leads, and does
+            not promise work, calls or results. An issued permit means the work at that address has
+            already been sold; it indicates activity in the surrounding area, not the needs of any
+            household.
           </p>
           <p>
-            Homeowners initiate contact with contractors directly. KnockPortal is not a party to any
-            agreement between a homeowner and a contractor.
+            Permit records come from the City and may be incomplete, delayed or inaccurate. The
+            absence of a permit does not mean that no work was performed. You are responsible for
+            how you use the information.
           </p>
           <p>
-            This service is in early development and coverage is expanding. We may modify or
-            discontinue features with reasonable notice.
+            If you use KnockPortal to plan a mailing, you are the sender. You remain responsible for
+            complying with the law that applies to you, including licence-disclosure requirements in
+            advertising.
+          </p>
+          <p>
+            This service is in early development. We may modify or discontinue features with
+            reasonable notice.
           </p>
           <p>
             Operated by Abalon Construction Management LLC, 4030 Wake Forest Rd, Ste 349, Raleigh,

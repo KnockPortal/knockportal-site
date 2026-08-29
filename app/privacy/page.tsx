@@ -8,26 +8,27 @@ export default function PrivacyPage() {
         <p className="font-mono text-muted text-xs mb-8">Under legal review — final text from attorney before publication.</p>
         <div className="prose prose-invert prose-sm text-muted space-y-4 leading-relaxed">
           <p>
-            <strong className="text-hail">What we collect:</strong> email address, trade category,
-            optional job description (homeowners); company name, contact details, trade categories,
-            service areas (contractors).
+            <strong className="text-hail">What we collect:</strong> your email address when you sign
+            in, and what you do inside your workspace.
           </p>
           <p>
-            <strong className="text-hail">How we use it:</strong> to deliver the permit registry to
-            contractors and to send homeowners a list of contractors in their category and area.
+            <strong className="text-hail">What we do not collect:</strong> we do not collect
+            information from homeowners, and we do not offer a service to homeowners.
           </p>
           <p>
-            <strong className="text-hail">What we do not do:</strong> we do not sell, share, or
-            transfer homeowner email addresses to any third party, including contractors. Homeowners
-            initiate contact with contractors themselves.
+            <strong className="text-hail">Permit information:</strong> the permit records shown on
+            this site come from the public records of the City and County of San Francisco. We
+            process and display them; we do not add private information to them.
+          </p>
+          <p>
+            <strong className="text-hail">Sharing:</strong> we do not sell personal information and
+            we do not pass email addresses to third parties for their own marketing. We use service
+            providers to host the site, deliver email and process payments; they act on our
+            instructions.
           </p>
           <p>
             <strong className="text-hail">Retention and deletion:</strong> you may request deletion
             of your data at any time by emailing knockportal@gmail.com.
-          </p>
-          <p>
-            <strong className="text-hail">CAN-SPAM:</strong> each email we send includes our
-            physical address and a working unsubscribe mechanism.
           </p>
           <p>
             Operated by Abalon Construction Management LLC, 4030 Wake Forest Rd, Ste 349, Raleigh,

@@ -1,21 +1,9 @@
-# KnockPortal — DESIGN.md (Source of Truth)
+Product decisions live outside this repository, in the project's canon documents. Nothing in this repo is a source of product truth.
 
-> Single source of truth for the KnockPortal brand. Logo package, guidelines and the site build
-> synchronise to THIS file. Canon is KnockPortal only — never import Abalon palette, fonts or logo.
->
-> **Synced 2026-06-29 → DARK-FIRST "dispatch console" direction.** The site is dark-first: an ink
-> canvas with a live permit-telemetry feel (mission-control / equipment-dashboard, NOT sci-fi).
-> Tokens (hex) are unchanged; their ROLES flipped from the earlier light-first draft. See THEME.
+# KnockPortal — DESIGN.md
 
-## PATTERN
-B2B SaaS — a marketing workspace for residential contractors. It reads the city's issued
-building permits, groups them into live clusters, and lets a contractor pick neighbourhoods
-themselves — then launch a postcard campaign or prepare a walk list. Live market: roofing &
-solar (San Francisco); structure is category- and metro-agnostic and expands. Authoritative,
-data-driven, made-by-people-who-get-the-trade. The site is a **conversion funnel only** — after
-subscribing, value lives in email + a member app, not the marketing site (closed-system / "thing
-in itself"). Not a tech-startup gradient blob, not an insurance shield, not a weather app. Storm
-framing (DFW/Florida hail) is retired for Phase 0 — positioning is neutral permit-intelligence.
+> Design system only: palette, typography, logo usage, dark theme. Canon is KnockPortal only —
+> never import Abalon palette, fonts or logo.
 
 ## THEME — dark-first (the big rule)
 - **Canvas:** `ink #0F1822` is the primary background everywhere. `slate #1B2733` for elevated
@@ -43,21 +31,6 @@ framing (DFW/Florida hail) is retired for Phase 0 — positioning is neutral per
 Contrast: hail-on-ink ≈ 15:1, hail-on-slate 13.5:1 (AAA). `muted #8A99A8` on ink ≈ 5.9:1 — OK for
 meta/telemetry but **do not** drop muted below ~13px on ink for primary reading. Orange-on-dark is
 accent-only (values, dot, CTA fill with ink text), never a full word of body.
-
-## DISPATCH HERO (signature pattern — load-bearing pages)
-The hero on Home and For-contractors reads as a **local dispatch / equipment screen monitoring the
-city**, not a generic landing:
-- **Telemetry top bar** (mono, muted): `37.7749°N · 122.4194°W | SAN FRANCISCO | {date} | ● LIVE`
-  (the `●` is orange). Hairline under it.
-- **Left column:** mono eyebrow (`● PERMIT INTELLIGENCE — SAN FRANCISCO`), H1 in Barlow Condensed
-  (hail, tight leading), 2–3 sentence hook, two CTAs — orange-solid primary + outline-on-dark
-  secondary.
-- **Right column = live console:** slate card, hairline border, header `● INCOMING · LAST 7 DAYS`
-  + `SF · ROOFING+SOLAR`, a mono table of masked permit rows (`7XX Montgomery St / Chinatown /
-  $40,000`), **values in orange**, footer `Full address & value, every morning. · Unlock →`.
-- **Bottom counter strip** (mono, muted, key values hail/orange): `TRACKED · 90D {n} · PEAK {date}
-  · TODAY +{n} · MEDIAN VALUE ${n}`. All numbers are DB-driven variables.
-- **Background:** ink with a faint dotted "star" grid (very low contrast). No glow.
 
 ## TYPOGRAPHY
 - **Display / wordmark:** Barlow Condensed SemiBold (600). OFL. Sentence case (never CAPS/Title).
@@ -111,9 +84,3 @@ export const display = Barlow_Condensed({ subsets:['latin'], weight:['600'], var
 export const body    = IBM_Plex_Sans({ subsets:['latin'], weight:['400','500','600'], variable:'--font-body' })
 export const mono    = IBM_Plex_Mono({ subsets:['latin'], weight:['500'], variable:'--font-mono' })
 ```
-
-## Contacts (operated-by)
-KnockPortal is operated by **Abalon Construction Management LLC** (Raleigh, NC). Product surfaces
-lead with KnockPortal; the LLC appears as a muted legal line. Customer contact on @knockportal.com
-(or knockportal@gmail.com interim) and knockportal.com. Registered address: 4030 Wake Forest Rd,
-Ste 349, Raleigh, NC 27609. Tagline: "Know before you knock".

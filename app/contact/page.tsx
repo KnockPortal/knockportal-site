@@ -6,7 +6,7 @@ export default function ContactPage() {
       <div className="max-w-lg">
         <h1 className="font-display text-5xl sm:text-6xl text-hail mb-6">Contact</h1>
         <p className="text-muted text-base leading-relaxed mb-8">
-          Questions, coverage requests, or waitlist sign-ups — reach us at:
+          Questions about KnockPortal — reach us at:
         </p>
         <div className="bg-slate border border-hairline rounded-lg p-6 space-y-4">
           <div>

@@ -9,10 +9,8 @@ import { cn } from '@/lib/utils'
 
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
-  { label: 'For contractors', href: '/contractors' },
-  { label: 'Pricing', href: '/pricing' },
-  { label: 'How it works', href: '/how-it-works' },
-  { label: 'Coverage', href: '/coverage' },
+  { label: 'About', href: '/about' },
+  { label: 'Contact', href: '/contact' },
 ]
 
 export function StickyHeader() {
@@ -54,25 +52,6 @@ export function StickyHeader() {
             ))}
           </nav>
 
-          {/* Desktop CTAs */}
-          <div className="hidden md:flex items-end gap-3 shrink-0">
-            <div className="flex flex-col items-end gap-0.5">
-              <Link
-                href="/request"
-                className="inline-flex items-center px-4 py-2 border border-hail/60 text-hail text-sm font-medium rounded hover:bg-hail/10 transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2"
-              >
-                Submit a request
-              </Link>
-              <span className="text-muted text-[11px]">For homeowners — find a contractor</span>
-            </div>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center px-4 py-2 bg-orange text-ink text-sm font-semibold rounded hover:bg-[#E85D10] transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2 whitespace-nowrap"
-            >
-              Subscribe — from $99/mo
-            </Link>
-          </div>
-
           {/* Mobile menu toggle */}
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -102,22 +81,6 @@ export function StickyHeader() {
               </Link>
             ))}
           </nav>
-          <div className="flex flex-col gap-2 mt-4">
-            <Link
-              href="/request"
-              onClick={() => setMobileOpen(false)}
-              className="w-full text-center py-2.5 border border-hail/60 text-hail text-sm font-medium rounded"
-            >
-              Submit a request
-            </Link>
-            <Link
-              href="/pricing"
-              onClick={() => setMobileOpen(false)}
-              className="w-full text-center py-2.5 bg-orange text-ink text-sm font-semibold rounded"
-            >
-              Subscribe — from $99/mo
-            </Link>
-          </div>
         </div>
       )}
     </header>

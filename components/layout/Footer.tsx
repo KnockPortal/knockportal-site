@@ -5,7 +5,7 @@ export function Footer() {
   return (
     <footer className="bg-ink border-t border-hairline">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 pb-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
           {/* Logo + tagline */}
           <div className="md:col-span-1">
             <Link href="/">
@@ -18,16 +18,6 @@ export function Footer() {
               />
             </Link>
             <p className="text-hail font-semibold text-sm">Know before you knock.</p>
-          </div>
-
-          {/* Product */}
-          <div>
-            <p className="text-muted font-mono text-xs uppercase tracking-widest mb-4">Product</p>
-            <ul className="space-y-2.5 text-sm text-hail/80">
-              <li><Link href="/how-it-works" className="hover:text-hail transition-colors duration-150">How it works</Link></li>
-              <li><Link href="/pricing" className="hover:text-hail transition-colors duration-150">Pricing</Link></li>
-              <li><Link href="/coverage" className="hover:text-hail transition-colors duration-150">Coverage</Link></li>
-            </ul>
           </div>
 
           {/* Company */}

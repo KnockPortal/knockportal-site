@@ -20,9 +20,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
-      <body className="bg-ink text-hail font-sans antialiased">
+      {/* Sticky footer: body is a full-height column, main takes the slack. A short
+          page pushes the footer to the bottom edge; a long one lets it follow the
+          content. `grow` keeps main's flex-basis at auto, so long pages are never
+          compressed. Nothing here is tied to the header's height — it stays sticky
+          as a flex item, and may change height freely. */}
+      <body className="bg-ink text-hail font-sans antialiased min-h-dvh flex flex-col">
         <StickyHeader />
-        <main>{children}</main>
+        <main className="grow">{children}</main>
         <Footer />
       </body>
     </html>
