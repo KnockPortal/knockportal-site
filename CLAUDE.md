@@ -19,19 +19,23 @@ npm run lint    # next lint
 npx tsc --noEmit
 ```
 
-`tools/refresh_data.sh` пересобирает `public/data/*.json`; `tools/build_pages.py` генерирует
-статические страницы `public/sf/` из `tools/_template.html`.
+`tools/refresh_data.sh` пересобирает `public/data/*.json`.
 
 ## Структура
 
-- `app/` — маршруты App Router: `page.tsx`, `about/`, `contact/`, `privacy/`, `terms/`,
-  `app/` (кабинет), `api/webhooks/stripe/`.
+- `app/` — App Router с двумя root layout. `app/(site)/` — маршруты сайта: `page.tsx`,
+  `about/`, `contact/`, `privacy/`, `terms/`, `app/` (кабинет). `app/(surface)/` — рабочая
+  поверхность. `app/api/webhooks/stripe/`, `app/globals.css`, `app/fonts.ts`,
+  `app/favicon.ico` — вне групп.
 - `components/layout/` — `StickyHeader.tsx`, `Footer.tsx`, `Section.tsx`.
   `components/sections/DottedBg.tsx` — фоновая сетка.
 - `lib/` — `categories.ts`, `permit-data.ts`, `supabase-browser.ts`, `supabase-server.ts`,
-  `utils.ts` (`cn`). Импорт по алиасу `@/`.
-- `public/sf.html` и `public/sf/<slug>.html` — статические страницы вне Next layout, доступны
-  по `/sf` и `/sf/<slug>` через `rewrites()` в `next.config.mjs`. На React не переписывать.
+  `surface.ts`, `demo-companies.json`, `utils.ts` (`cn`). Импорт по алиасу `@/`.
+- `app/(surface)/` — рабочая поверхность продукта по адресу `/<city>/<trade>`; собственный
+  root layout без обвязки сайта. Клиентский код поверхности — `public/assets/surface/page.js`
+  и `page.css`, отдаются как статика с неизменёнными байтами. **На React не переписывать.**
+  Персонализация — параметр `?from=<slug>`. `app/(site)/` — маршруты сайта с общим
+  header/footer.
 - `public/data/*.json` создаёт `tools/refresh_data.sh`. Вручную не редактировать.
 - `supabase/migrations/` расходится с живой схемой. Источник истины — живая схема.
 - `docs/logo-source/` — исходники логотипа.

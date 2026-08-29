@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import { display, body, mono } from './fonts'
-import './globals.css'
+import { display, body, mono } from '../fonts'
+import '../globals.css'
 import { StickyHeader } from '@/components/layout/StickyHeader'
 import { Footer } from '@/components/layout/Footer'
 
