@@ -51,5 +51,12 @@ export const config = {
   // /api/webhooks/stripe is absent under any circumstance — it reads the raw
   // body and verifies the Stripe signature, and no intermediate layer belongs
   // on that path.
-  matcher: ['/app', '/app/:path*', '/api/export', '/api/export/:path*'],
+  matcher: [
+    '/app',
+    '/app/:path*',
+    '/api/export',
+    '/api/export/:path*',
+    '/api/selections',
+    '/api/selections/:path*',
+  ],
 }

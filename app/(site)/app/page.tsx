@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabaseBrowser } from '@/lib/supabase-browser'
+import { DATA_BASE } from '@/lib/surface'
 
 // Supabase Auth "Minimum interval per user" is 60s. The limit lives on the
 // server and is keyed by recipient, so the client tracks the address, not the
@@ -36,6 +37,29 @@ type ClustersFile = {
   meta: Record<string, unknown>
   clusters: ClusterRow[]
 }
+
+// latest.json names the snapshot the surface is serving right now. Everything
+// under a stamp is immutable, so the pair of reads can never mix two snapshots.
+type LatestFile = {
+  stamp?: string
+}
+
+// Columns of public.saved_selections that the list needs. center_lat and
+// center_lon exist on the table but no row here shows a coordinate, so they are
+// not fetched.
+type SavedSelectionRow = {
+  id: string
+  city: string
+  trade: string
+  snapshot_stamp: string
+  nhood: string | null
+  label: string | null
+  addresses: string[]
+  created_at: string
+}
+
+const SAVED_SELECTION_COLUMNS =
+  'id, city, trade, snapshot_stamp, nhood, label, addresses, created_at'
 
 type Stage = 'loading' | 'email' | 'code' | 'ready'
 
@@ -141,6 +165,16 @@ export default function AppPage() {
 
   const [data, setData] = useState<ClustersFile | null>(null)
   const [dataError, setDataError] = useState<string | null>(null)
+  // The stamp of the snapshot on screen. Shown next to the dataset and needed
+  // by the save button, which lands on the surface in the next pass.
+  const [stamp, setStamp] = useState<string | null>(null)
+
+  const [saved, setSaved] = useState<SavedSelectionRow[] | null>(null)
+  const [savedError, setSavedError] = useState<UiError | null>(null)
+  // At most one row is ever awaiting confirmation, so this is an id and not a
+  // flag per row.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const ensureRan = useRef(false)
   const codeInput = useRef<HTMLInputElement | null>(null)
@@ -185,6 +219,10 @@ export default function AppPage() {
         setWorkspaceError(null)
         setData(null)
         setDataError(null)
+        setStamp(null)
+        setSaved(null)
+        setSavedError(null)
+        setConfirmingId(null)
         ensureRan.current = false
       }
     })
@@ -246,18 +284,77 @@ export default function AppPage() {
     void runEnsureWorkspace()
   }, [session, runEnsureWorkspace])
 
+  // Two reads, the same two the surface makes: latest.json says which snapshot
+  // is current, and the summary lives under that stamp. The copy checked into
+  // public/data is a repository snapshot that drifts from what is published, so
+  // it is not what this page shows.
   useEffect(() => {
     if (!workspace || data) return
-    fetch('/data/clusters.json', { cache: 'no-store' })
-      .then((r) => {
-        if (!r.ok) throw new Error('HTTP ' + r.status)
-        return r.json()
-      })
-      .then((j: ClustersFile) => setData(j))
-      .catch((e: unknown) =>
-        setDataError(e instanceof Error ? e.message : String(e)),
-      )
+    let alive = true
+
+    const load = async () => {
+      const latestRes = await fetch(DATA_BASE + 'latest.json', { cache: 'no-store' })
+      if (!latestRes.ok) throw new Error('latest.json: HTTP ' + latestRes.status)
+      const latest = (await latestRes.json()) as LatestFile
+      if (!latest.stamp) throw new Error('latest.json: no stamp field')
+
+      const url = DATA_BASE + latest.stamp + '/clusters.json'
+      const clustersRes = await fetch(url, { cache: 'no-store' })
+      if (!clustersRes.ok) throw new Error('clusters.json: HTTP ' + clustersRes.status)
+      const file = (await clustersRes.json()) as ClustersFile
+
+      if (!alive) return
+      setStamp(latest.stamp)
+      setData(file)
+    }
+
+    load().catch((e: unknown) => {
+      if (!alive) return
+      setDataError(e instanceof Error ? e.message : String(e))
+    })
+
+    return () => {
+      alive = false
+    }
   }, [workspace, data])
+
+  // Read straight from the browser: the SELECT policy already limits the rows
+  // to workspaces this user belongs to, so a route in front of this would add a
+  // hop and a second place where access is decided.
+  const loadSaved = useCallback(async () => {
+    setSavedError(null)
+    const { data: rows, error: e } = await supabase
+      .from('saved_selections')
+      .select(SAVED_SELECTION_COLUMNS)
+      .order('created_at', { ascending: false })
+      .returns<SavedSelectionRow[]>()
+    if (e) {
+      setSavedError(describeError(e))
+      return
+    }
+    setSaved(rows ?? [])
+  }, [supabase])
+
+  useEffect(() => {
+    if (!workspace) return
+    void loadSaved()
+  }, [workspace, loadSaved])
+
+  const deleteSaved = useCallback(
+    async (id: string) => {
+      setDeletingId(id)
+      setSavedError(null)
+      const { error: e } = await supabase.from('saved_selections').delete().eq('id', id)
+      setDeletingId(null)
+      setConfirmingId(null)
+      if (e) {
+        setSavedError(describeError(e))
+        return
+      }
+      setSaved((prev) => (prev ? prev.filter((row) => row.id !== id) : prev))
+    },
+    [supabase],
+  )
 
   async function sendCode() {
     const address = normalise(email)
@@ -438,6 +535,94 @@ export default function AppPage() {
 
       {stage === 'ready' && session && (
         <div className="mt-8 space-y-8">
+          <section className="space-y-4">
+            <h2 className="font-display text-lg font-semibold text-hail">
+              Saved selections
+            </h2>
+
+            {savedError && (
+              <div className="rounded border border-hairline bg-slate px-4 py-3">
+                <p className="text-sm text-hail">{savedError.headline}</p>
+                {savedError.detail && (
+                  <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted">
+                    {savedError.detail}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {!saved && !savedError && (
+              <p className="text-sm text-muted">Loading saved selections…</p>
+            )}
+
+            {saved && saved.length === 0 && (
+              <p className="text-sm text-muted">
+                Nothing saved yet. Pick houses on the map and save the selection to
+                find it here.
+              </p>
+            )}
+
+            {saved && saved.length > 0 && (
+              <ul className="space-y-3">
+                {saved.map((row) => (
+                  <li
+                    key={row.id}
+                    className="rounded border border-hairline bg-slate px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-hail">
+                          {row.nhood || row.label || '—'}
+                        </p>
+                        <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted">
+                          {row.addresses.length === 1
+                            ? '1 address'
+                            : `${row.addresses.length} addresses`}
+                          {' · '}
+                          {`snapshot ${row.snapshot_stamp}`}
+                          {' · '}
+                          {new Date(row.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap items-center gap-3">
+                        {/* The combination comes from the row, not from the
+                            surface constants: a saved selection carries the city
+                            and trade it was made in. The surface ignores
+                            ?selection= until the next pass, so this link opens
+                            the map without restoring the choice yet. */}
+                        <a
+                          href={`/${encodeURIComponent(row.city)}/${encodeURIComponent(
+                            row.trade,
+                          )}?selection=${encodeURIComponent(row.id)}`}
+                          className="text-sm text-orange hover:underline"
+                        >
+                          Open on the map
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirmingId === row.id) {
+                              void deleteSaved(row.id)
+                              return
+                            }
+                            // Arming this row disarms whichever was armed
+                            // before, so only one row is ever one click from
+                            // being deleted.
+                            setConfirmingId(row.id)
+                          }}
+                          disabled={deletingId !== null}
+                          className={`${secondaryClass} px-3 py-1`}
+                        >
+                          {confirmingId === row.id ? 'Confirm delete' : 'Delete'}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
           <section className="rounded border border-hairline bg-slate px-4 py-3">
             <div className="space-y-1 font-mono text-xs text-muted">
               <div>email: {session.user.email}</div>
@@ -489,13 +674,14 @@ export default function AppPage() {
               Current citywide dataset
             </h2>
 
-            {dataError && (
-              <p className="font-mono text-xs text-muted">
-                clusters.json: {dataError}
-              </p>
-            )}
+            {/* The file name now travels inside the message: two files are read,
+                and a failure has to say which one refused. */}
+            {dataError && <p className="font-mono text-xs text-muted">{dataError}</p>}
             {!data && !dataError && (
-              <p className="text-sm text-muted">Loading /data/clusters.json…</p>
+              <p className="text-sm text-muted">Loading the current snapshot…</p>
+            )}
+            {data && stamp && (
+              <p className="font-mono text-xs text-muted">{`snapshot ${stamp}`}</p>
             )}
 
             {data && (
