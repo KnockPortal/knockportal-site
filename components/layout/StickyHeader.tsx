@@ -3,9 +3,10 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { supabaseBrowser } from '@/lib/supabase-browser'
 
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
@@ -13,9 +14,40 @@ const NAV_LINKS = [
   { label: 'Contact', href: '/contact' },
 ]
 
+const AUTH_HREF = '/app'
+const SIGNED_OUT_LABEL = 'Sign in'
+const SIGNED_IN_LABEL = 'Workspace'
+
 export function StickyHeader() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [hasSession, setHasSession] = useState(false)
+
+  // The slot starts signed-out and flips once a session is found: the header
+  // renders long before auth resolves, and there is no third state to show.
+  // Same browser client the workspace already uses — no second token store.
+  useEffect(() => {
+    let supabase
+    try {
+      supabase = supabaseBrowser()
+    } catch {
+      // Public env missing: the header still has to render the rest of the site.
+      return
+    }
+    let alive = true
+    void supabase.auth.getSession().then(({ data }) => {
+      if (alive) setHasSession(Boolean(data.session))
+    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session))
+    })
+    return () => {
+      alive = false
+      sub.subscription.unsubscribe()
+    }
+  }, [])
+
+  const authLabel = hasSession ? SIGNED_IN_LABEL : SIGNED_OUT_LABEL
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -50,6 +82,19 @@ export function StickyHeader() {
                 {link.label}
               </Link>
             ))}
+
+            {/* Auth slot */}
+            <Link
+              href={AUTH_HREF}
+              className={cn(
+                'rounded border px-3 py-1.5 transition-colors duration-150 focus-visible:outline-orange focus-visible:outline-2 focus-visible:rounded-sm',
+                isActive(AUTH_HREF)
+                  ? 'border-orange text-orange'
+                  : 'border-hairline text-hail hover:border-orange hover:text-orange'
+              )}
+            >
+              {authLabel}
+            </Link>
           </nav>
 
           {/* Mobile menu toggle */}
@@ -80,6 +125,18 @@ export function StickyHeader() {
                 {link.label}
               </Link>
             ))}
+
+            {/* Auth slot */}
+            <Link
+              href={AUTH_HREF}
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                'py-2 text-sm transition-colors duration-150',
+                isActive(AUTH_HREF) ? 'text-orange' : 'text-hail'
+              )}
+            >
+              {authLabel}
+            </Link>
           </nav>
         </div>
       )}
