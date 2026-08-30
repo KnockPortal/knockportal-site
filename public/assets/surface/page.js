@@ -20,7 +20,8 @@
      #tab-walk #tab-mail   two buttons, aria-selected carries the state
      #pane     scrolling container the lists are written into
      #count    line under the lists
-     #clear #dl  buttons
+     #clear #save #dl  buttons
+     #savenote  line under the buttons; how the last save went
      #dateline #lede-city #lede-cluster #notice #provenance #staleness
      #zoomnote  empty plate over the map; the neighbour layer's own message
      .yrs .win .rsince    runtime text slots, filled wherever they appear
@@ -106,6 +107,20 @@ const CLUSTER_LAYERS = ['nb-dots','nb-hit','rr-x','rr-hit'];
 const DATA_ERROR = 'We could not reach the permit data. Reply to the email this '
                  + 'page came with and we will send the list directly.';
 
+/* Where a selection waits while he signs in. This page has no session of its
+   own and never will: a save answered with 401 is parked here, the browser goes
+   to the workspace, and the page there finishes what was started. One key, one
+   tab, and it is gone the moment it has been read. */
+const PENDING_KEY = 'kp_pending_selection';
+
+/* ?selection= carries the id of a saved row. Anything else came from a hand-
+   edited address: it earns no request, because the route would answer 404 to
+   it, and no sentence, because nothing was promised. */
+const SELECTION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/* the save button's resting label, put back after every attempt */
+const SAVE_LABEL = 'Save selection';
+
 /* ---------------------------------------------------------------- state */
 let STAMP   = null;   // snapshot folder, fixed for the whole session
 let PERMITS = [];     // every permit in the window, city-wide
@@ -121,6 +136,16 @@ let MODE  = 'mail';         // walk | mail — postcards lead; the channel is th
 const PICKED = new Set();   // addresses selected for postcards
 let MAILN = null;           // how many postcards he wants; null = not set for this cluster
 const pinMarkers = [];
+
+/* A saved selection on its way back onto the map. The row is asked for at load,
+   at the same moment as the data and not after it: the two are independent, and
+   they land in either order — so both sides call restoreJoin() and whichever is
+   second finds both halves there. Everything here is emptied the moment it has
+   been used, because the restore runs once per load: entering the same group
+   again by hand must not deal the same hand a second time. */
+let RESTORE      = null;   // the saved row, waiting for its group to open
+let RESTORE_NOTE = null;   // what to say about it, once there is a screen to say it on
+let ROUTED       = false;  // the first route has run: a screen exists to talk on
 
 let map = null;
 let mapReady = false;
@@ -171,6 +196,11 @@ fetch(DATA_BASE + 'latest.json', {cache:'no-cache'})
   .then(([p, c]) => { PERMITS = (p && p.permits) || []; INDEX = c; start(); })
   .catch(dataFailed);
 
+/* Sent off beside the data rather than behind it: the saved row depends on
+   neither the snapshot nor the map, and waiting would put a whole round trip
+   between the man and his own selection. */
+restoreStart();
+
 function ok(r){ if (!r.ok) throw new Error(r.status); return r.json(); }
 function snap(file){ return DATA_BASE + STAMP + '/' + file; }
 
@@ -194,6 +224,10 @@ function start(){
   window.addEventListener('popstate', applyHash);
   window.addEventListener('hashchange', applyHash);
   applyHash();
+  /* The hash has had its say; a ?selection= waiting to be restored outranks it
+     and gets the last word. */
+  ROUTED = true;
+  restoreJoin();
 }
 
 /* ------------------------------------------------------- runtime text */
@@ -501,6 +535,7 @@ function wireCity(){
 /* ------------------------------------------------------------- screens */
 function enterCity(missingId){
   const note = $('notice');
+  setSaveNote('');          // whatever was saved, it was saved on another screen
   if (missingId){
     note.textContent = 'That group is not in the current data — the city map below is up to date.';
     note.hidden = false;
@@ -516,6 +551,7 @@ function enterCity(missingId){
 
 function enterCluster(id){
   $('notice').hidden = true;
+  setSaveNote('');          // a different group is a different selection
   if (SCREEN === 'cluster' && String(CURID) === String(id)) return;
   SCREEN = 'cluster'; CURID = String(id);
   document.body.dataset.screen = 'cluster';
@@ -547,6 +583,116 @@ function goCity(){
   if (SCREEN === 'city' && !location.hash) return;
   history.pushState({}, '', location.pathname + location.search);
   enterCity(null);
+}
+
+/* ----------------------------------------------------------- restoring */
+/* A selection saved from this page comes back by id on the address. What the
+   row carries is addresses and a centre — never a group id, because ids do not
+   survive the next data run and nothing outside this page may store one. So the
+   group is found the only way left: the one whose own centre in clusters.json
+   is nearest. That file carries lat and lon for every group already, and
+   metres() is the same measure the map is built on. */
+function restoreStart(){
+  const m = /[?&]selection=([^&#]*)/.exec(location.search || '');
+  /* Read raw and not decoded: an id has nothing in it that needs escaping, so
+     anything percent-encoded fails the test below anyway — and decoding a
+     half-written escape throws, which at the top level of this file would take
+     the rest of the page's wiring down with it. */
+  const id = m ? m[1] : '';
+  if (!SELECTION_RE.test(id)) return;
+  fetch('/api/selections/' + id, {credentials:'same-origin'})
+    .then(r => {
+      if (r.ok) return r.json().then(row => { RESTORE = row; });
+      if (r.status === 401)
+        RESTORE_NOTE = 'Sign in to open your saved selection, then reload this page.';
+      else if (r.status === 404)
+        RESTORE_NOTE = 'That saved selection is gone.';
+      else
+        RESTORE_NOTE = 'Your saved selection could not be loaded. HTTP ' + r.status;
+    })
+    .catch(e => {
+      RESTORE_NOTE = 'Your saved selection could not be loaded. '
+                   + String((e && e.message) || e);
+    })
+    .then(restoreJoin);
+}
+
+/* Both halves have to be in: the row, and a page that has already routed once —
+   there is no screen to open a group on and no #notice worth writing before
+   that. Whichever half lands second is the one that gets through here. */
+function restoreJoin(){
+  if (!ROUTED) return;
+  if (RESTORE_NOTE){ restoreSay(); return; }
+  if (!RESTORE) return;
+  const row = RESTORE;
+  /* No centre, no group. Addresses alone do not say which block they are on,
+     and this page will not open every cluster file in the run to find out. */
+  if (typeof row.center_lat !== 'number' || typeof row.center_lon !== 'number'){
+    RESTORE = null;
+    RESTORE_NOTE = 'None of the saved addresses are in the current data.';
+    restoreSay();
+    return;
+  }
+  const target = {lat:row.center_lat, lon:row.center_lon};
+  let best = null, bestD = Infinity;
+  INDEX.clusters.forEach(c => {
+    if (typeof c.lat !== 'number' || typeof c.lon !== 'number') return;
+    const d = metres(target, c);
+    if (d < bestD){ bestD = d; best = c; }
+  });
+  if (!best){
+    RESTORE = null;
+    RESTORE_NOTE = 'None of the saved addresses are in the current data.';
+    restoreSay();
+    return;
+  }
+  /* The same door a click on the map goes through: the hash moves, the group
+     loads, and load() puts the addresses back when its payload lands. If that
+     group is already open and already loaded, goCluster does nothing at all —
+     so the applying is done here instead, and the note goes up after it. */
+  if (SCREEN === 'cluster' && String(CURID) === String(best.cluster) && CUR){
+    restoreApply(); restoreSay();
+  } else {
+    goCluster(best.cluster);
+  }
+}
+
+/* Called from load(), after the cluster has been measured and before anything
+   is drawn from it. MAILN is set alongside PICKED on purpose: leaving it null
+   would have render() fill it from defaultN() and repick the whole block over
+   the top of what was saved. */
+function restoreApply(){
+  const row = RESTORE;
+  RESTORE = null;                 // once per load, whatever comes of it
+  if (!row || !CUR) return;
+  const want = new Set(row.addresses || []);
+  PICKED.clear();
+  CUR.neighbours.forEach(n => { if (want.has(n.a)) PICKED.add(n.a); });
+  MAILN = PICKED.size;
+  setMode('mail');                // a saved selection is a mailing, not a walk
+  pushNB();
+  const parts = [];
+  if (row.snapshot_stamp && String(row.snapshot_stamp) !== String(STAMP))
+    parts.push('This selection was saved on an earlier snapshot ('
+             + row.snapshot_stamp + ').');
+  /* Silence is the right answer to a selection that came back whole. A shortfall
+     is not: he is about to mail this list, and he is owed the count. */
+  if (!PICKED.size)
+    parts.push('None of the saved addresses are in the current data.');
+  else if (PICKED.size !== want.size)
+    parts.push(PICKED.size + ' of ' + want.size
+             + ' saved addresses are still in the data.');
+  RESTORE_NOTE = parts.length ? parts.join(' ') : null;
+}
+
+/* The note goes up only after the group has opened: enterCluster() clears
+   #notice on the way in and would wipe anything written before it. */
+function restoreSay(){
+  if (!RESTORE_NOTE) return;
+  const note = $('notice');
+  note.textContent = RESTORE_NOTE;
+  note.hidden = false;
+  RESTORE_NOTE = null;
 }
 
 /* -------------------------------------------------------- cluster layers */
@@ -862,8 +1008,13 @@ function load(id){
     if (String(CURID) !== String(id)) return;   // he moved on while it was in flight
     /* the dots are sized off this cluster's own spacing, so it is measured
        before anything is drawn from it */
-    CUR = j; PICKED.clear(); MAILN = null; measureCluster(); paintLayers(); render();
+    CUR = j; PICKED.clear(); MAILN = null; measureCluster();
+    /* a saved selection waiting on this group goes back into PICKED here, while
+       the group is measured and nothing has been drawn from it yet */
+    restoreApply();
+    paintLayers(); render();
     $('pane').scrollTop = 0;
+    restoreSay();
   }).catch(() => {
     $('pane').innerHTML = '<p class="hint">' + DATA_ERROR + '</p>';
   });
@@ -935,6 +1086,10 @@ function render(){
   const pane = $('pane');
   const dl = $('dl');
   const clear = $('clear');
+  const save = $('save');
+  /* What the save line says stops being true the moment the pick changes, and
+     every change of the pick comes back through here. */
+  setSaveNote('');
   if (!CUR) return;
 
   if (MODE === 'walk'){
@@ -965,6 +1120,9 @@ function render(){
     dl.textContent = 'Download the walk list';
     dl.disabled = false;
     clear.hidden = true;
+    /* nothing is picked on a walk — the list is the whole block, and it is the
+       download that carries it */
+    save.hidden = true;
   } else {
     if (MAILN === null){ MAILN = defaultN(); autoPick(MAILN); }
     let h = '<div class="mailn"><label for="mailn-in">Postcards</label>'
@@ -1004,6 +1162,7 @@ function render(){
     dl.textContent = 'Download the mailing list';
     dl.disabled = !n;
     clear.hidden = !n;
+    save.hidden = !n;
   }
 }
 
@@ -1068,10 +1227,98 @@ $('clear').onclick = () => {
   render();
 };
 
+/* ------------------------------------------------------- saving a selection */
+/* The one line of feedback the save has. It sits under the buttons and not in
+   #notice at the top of the page: by the time he presses this, he is working
+   the panel, and on a phone the foot is stuck to the bottom while the header
+   is a screen and a half away. */
+function setSaveNote(html){
+  const el = $('savenote');
+  if (!el) return;
+  el.innerHTML = html || '';
+  el.hidden = !html;
+}
+function saveFailed(detail){
+  setSaveNote('The selection could not be saved. ' + esc(detail));
+}
+
+/* The row of clusters.json this group came from. It carries the centre the
+   restore later searches by, and the names the cluster payload may not. */
+function indexRow(){
+  return (INDEX && INDEX.clusters.find(c => String(c.cluster) === String(CURID)))
+      || null;
+}
+
+/* Built out of what is on the screen and nothing else. The addresses go in the
+   order of the neighbour list — the order of the rows he read and of the CSV he
+   would have downloaded instead; a list that comes back in another order is a
+   different list to the man holding it. */
+function selectionBody(){
+  const row = indexRow();
+  const streets = CUR.streets;
+  const body = {
+    city: CITY,
+    trade: TRADE,
+    snapshot_stamp: STAMP,
+    addresses: CUR.neighbours.filter(n => PICKED.has(n.a)).map(n => n.a),
+    nhood: CUR.nhood || (row && row.nhood) || null,
+    /* the cluster payload spells the streets as a list, clusters.json as one
+       string; the row stores a line of text either way */
+    label: (Array.isArray(streets) ? streets.join(', ') : streets)
+        || (row && row.streets) || null
+  };
+  /* The centre is how the restore finds this group again, and it has no
+     substitute: ids do not survive the next data run. A group missing from the
+     index cannot happen — but if it ever did, the addresses are still the thing
+     worth keeping, so the save goes ahead without it. */
+  if (row && typeof row.lat === 'number' && typeof row.lon === 'number'){
+    body.center_lat = row.lat;
+    body.center_lon = row.lon;
+  }
+  return body;
+}
+
+$('save').onclick = () => {
+  if (!CUR || MODE === 'walk' || !PICKED.size) return;
+  const btn = $('save');
+  const body = JSON.stringify(selectionBody());
+  /* the only guard the button needs is against its own second click: the table
+     has no update policy, so a deliberate second save is a second row */
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  setSaveNote('');
+  fetch('/api/selections', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin', body:body
+  }).then(r => {
+    if (r.status === 201){
+      setSaveNote('Saved. <a href="/app">Open your workspace</a>');
+      return;
+    }
+    /* Not signed in. The pick is not lost over it: it waits in this tab while
+       he signs in, and the workspace page finishes the save from there. */
+    if (r.status === 401){
+      try { sessionStorage.setItem(PENDING_KEY, body); } catch (e) {}
+      location.href = '/app';
+      return;
+    }
+    if (r.status === 400)
+      return r.json().catch(() => null).then(j => {
+        saveFailed('invalid_request · ' + ((j && j.field) || 'unknown'));
+      });
+    saveFailed('HTTP ' + r.status);
+  }).catch(e => {
+    saveFailed(String((e && e.message) || e));
+  }).then(() => {
+    btn.disabled = false;
+    btn.textContent = SAVE_LABEL;
+  });
+};
+
 $('dl').onclick = () => {
   if (!CUR) return;
-  const nice = (CUR.nhood||'sf').replace(/[^A-Za-z]/g,'').slice(0,14) || 'sf';
-  const who = SLUG || 'sf';
+  const nice = (CUR.nhood||CITY).replace(/[^A-Za-z]/g,'').slice(0,14) || CITY;
+  const who = SLUG || CITY;
   let rows, name;
   if (MODE === 'walk'){
     const g = groupStreets(CUR.neighbours, CUR.permits);

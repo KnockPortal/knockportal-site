@@ -11,6 +11,9 @@ import { DATA_BASE } from '@/lib/surface'
 const RESEND_COOLDOWN_SECONDS = 60
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/
 const SLUG_STORAGE_KEY = 'kp.source_demo_slug'
+// Where the surface parks a selection it could not save because nobody was
+// signed in. It hands the browser here; this page finishes the save.
+const PENDING_SELECTION_KEY = 'kp_pending_selection'
 
 // Shape confirmed against pg_proc on 2026-08-23:
 // ensure_workspace(p_source_demo_slug text DEFAULT NULL)
@@ -177,6 +180,7 @@ export default function AppPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const ensureRan = useRef(false)
+  const pendingRan = useRef(false)
   const codeInput = useRef<HTMLInputElement | null>(null)
 
   // A session is the only thing that decides whether the workspace is shown.
@@ -338,6 +342,56 @@ export default function AppPage() {
   useEffect(() => {
     if (!workspace) return
     void loadSaved()
+  }, [workspace, loadSaved])
+
+  // The selection made on the surface before signing in. The key is removed
+  // before the request goes out and not after it: left in place, a refusal
+  // would be retried on every visit to this page for the rest of the tab's
+  // life, and the same body would keep failing the same way.
+  useEffect(() => {
+    if (!workspace || pendingRan.current) return
+    pendingRan.current = true
+
+    const raw = window.sessionStorage.getItem(PENDING_SELECTION_KEY)
+    if (!raw) return
+    window.sessionStorage.removeItem(PENDING_SELECTION_KEY)
+
+    let body: unknown
+    try {
+      body = JSON.parse(raw)
+    } catch {
+      // Nothing usable, and nothing worth saying about it: whatever was in
+      // there did not come from a save this page can finish.
+      return
+    }
+
+    const finish = async () => {
+      const res = await fetch('/api/selections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const payload = (await res.json().catch(() => null)) as {
+          error?: string
+          field?: string
+        } | null
+        throw new Error(
+          ['HTTP ' + res.status, payload?.error, payload?.field]
+            .filter(Boolean)
+            .join(' · '),
+        )
+      }
+      await loadSaved()
+    }
+
+    finish().catch((e: unknown) => {
+      setSavedError({
+        headline: 'We could not save the selection you made before signing in.',
+        detail: technicalLine(e),
+      })
+    })
   }, [workspace, loadSaved])
 
   const deleteSaved = useCallback(
@@ -587,9 +641,9 @@ export default function AppPage() {
                       <div className="flex shrink-0 flex-wrap items-center gap-3">
                         {/* The combination comes from the row, not from the
                             surface constants: a saved selection carries the city
-                            and trade it was made in. The surface ignores
-                            ?selection= until the next pass, so this link opens
-                            the map without restoring the choice yet. */}
+                            and trade it was made in. The surface reads
+                            ?selection=, finds the group by the stored centre and
+                            puts the addresses back on the map. */}
                         <a
                           href={`/${encodeURIComponent(row.city)}/${encodeURIComponent(
                             row.trade,

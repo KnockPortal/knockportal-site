@@ -340,6 +340,9 @@ button.ghost{
   padding:11px 14px;font:600 13px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
 }
 button.ghost:hover{border-color:#4A5D70}
+/* the whole width of the wrapped foot row: a sentence squeezed in beside the
+   counter and three buttons is a sentence nobody reads */
+.savenote{flex-basis:100%;margin:0;font-size:13px;line-height:1.45;color:var(--mute)}
 
 /* ---------------------------------------------------------------- endnote */
 .endnote{padding:22px 28px 40px;max-width:92ch}

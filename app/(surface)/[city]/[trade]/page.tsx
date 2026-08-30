@@ -50,11 +50,15 @@ function configScript(company: string, slug: string) {
 /* Per-page config, written by the route. COMPANY is empty on the public surface
    and that emptiness is what page.js reads to tell it from a demo.
    DATA_BASE holds no snapshot: the page asks latest.json which one is current,
-   so a fresh publish reaches every page already in the field without a rebuild. */
+   so a fresh publish reaches every page already in the field without a rebuild.
+   CITY and TRADE are the combination this page was rendered for; page.js sends
+   them back with a saved selection rather than keeping a copy of its own. */
 const MAPBOX_TOKEN = ${js(MAPBOX_TOKEN)};
 const COMPANY      = ${js(company)};
 const SLUG         = ${js(slug)};
 const DATA_BASE    = ${js(DATA_BASE)};
+const CITY         = ${js(SURFACE_CITY)};
+const TRADE        = ${js(SURFACE_TRADE)};
 `
 }
 
@@ -166,9 +170,18 @@ export default function SurfacePage({
                 <button className="ghost" id="clear" hidden>
                   Clear
                 </button>
+                {/* Saving needs a session and this page has none of its own: a
+                    save answered with 401 parks the pick and hands the browser
+                    to /app, which finishes it after the sign-in. */}
+                <button className="ghost" id="save" hidden>
+                  Save selection
+                </button>
                 <button className="go" id="dl">
                   Download
                 </button>
+                {/* The whole word about the save, in front of the man who
+                    pressed it — the header is off screen by then. */}
+                <p className="savenote" id="savenote" hidden></p>
               </div>
             </aside>
           </div>
@@ -198,7 +211,7 @@ export default function SurfacePage({
 
       {/* Load order, bottom up: the markup above is already in the document,
           page.css is applied from the head, mapbox-gl.js defines mapboxgl, the
-          inline block declares the four constants — and only then page.js runs.
+          inline block declares the six constants — and only then page.js runs.
           page.js has no readiness check of its own: it expects a finished DOM,
           which is exactly what a plain blocking script at the end of the body
           gets. Nothing here may be deferred, bundled or moved. */}
