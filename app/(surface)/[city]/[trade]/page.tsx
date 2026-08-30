@@ -183,10 +183,14 @@ export default function SurfacePage({
             — so treat this as a strong lead, not a promise. Every permit here links to its own record
             on the city’s portal; check any line you like.
           </p>
-          <p className="atcost">
-            Postcards are printed and mailed for you.
-            Reply to the email this page came with and we’ll set it up.
-          </p>
+          {/* No email carried the public address, so the line that answers one
+              belongs to the personal variant alone. */}
+          {personal ? (
+            <p className="atcost">
+              Postcards are printed and mailed for you.
+              Reply to the email this page came with and we’ll set it up.
+            </p>
+          ) : null}
           <p className="provenance" id="provenance"></p>
           <p className="staleness" id="staleness" hidden></p>
         </footer>

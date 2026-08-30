@@ -23,9 +23,10 @@ export const DATA_BASE =
 
 /**
  * Cache-busting suffix for page.js and page.css. First 12 characters of the
- * sha256 of the two files concatenated in that order — the same value the
- * retired generator wrote. Both files are frozen: they are served byte for byte
- * and never edited. If they ever do change, recompute with
+ * sha256 of the two files concatenated in that order. Both are served as static
+ * assets, byte for byte, so nothing derives this at build time: either file may
+ * be edited only together with this literal, recomputed in the same change —
+ * otherwise browsers and CDNs go on serving the previous asset.
  *
  *   cat public/assets/surface/page.js public/assets/surface/page.css \
  *     | shasum -a 256 | cut -c1-12
@@ -33,7 +34,7 @@ export const DATA_BASE =
  * A literal, because reading public/ from the filesystem at request time is not
  * something a page should do.
  */
-export const SURFACE_BUILD = 'eee898f39d41'
+export const SURFACE_BUILD = '841b83308a02'
 
 export type SurfaceVariant = {
   /** Company name for the personal variant; empty string on the public one. */

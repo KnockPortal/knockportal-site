@@ -200,10 +200,27 @@ body[data-screen="cluster"]:has(#tab-walk[aria-selected=true]) .maparea::after{
   pointer-events:none;
 }
 
-/* The corner anchor. pointer-events stays off here and is handed back to the
-   toggle alone: an expanded key must not eat the drag and the pinch under it. */
+/* Mapbox draws its logo into .mapboxgl-ctrl-bottom-left — the same corner the
+   key stands in, and the key, sitting higher in the stack, was covering it. The
+   logo is a condition of the tile licence, so the key is what moves: the bottom
+   strip of the map belongs to the logo and the key stands on top of it. The
+   text attribution keeps its own corner on the right, untouched.
+   CSS cannot measure one element against another, so the strip is a number.
+   It is not a guess at mapbox-gl.css: the strip and the logo box are set from
+   the same --logo-h here, and the -4px pullouts the library gives the mark are
+   zeroed, so the mark is exactly --logo-h tall at --logo-inset off both edges.
+   --logo-h is the mark's own height (the 88x23 wordmark); its width is left
+   alone, so the library's own narrow-map compact form still works. */
+.maparea{--logo-h:23px;--logo-inset:10px}
+.mapboxgl-ctrl-bottom-left .mapboxgl-ctrl{margin:0 0 var(--logo-inset) var(--logo-inset)}
+a.mapboxgl-ctrl-logo{margin:0;height:var(--logo-h)}
+
+/* The corner anchor, standing clear of the strip below it. pointer-events stays
+   off here and is handed back to the toggle alone: an expanded key must not eat
+   the drag and the pinch under it. */
 .legendbox{
-  position:absolute;left:14px;bottom:14px;z-index:5;
+  position:absolute;left:14px;z-index:5;
+  bottom:calc(var(--logo-inset) + var(--logo-h) + 8px);
   display:flex;flex-direction:column;align-items:flex-start;gap:6px;
   pointer-events:none;
 }
@@ -368,7 +385,9 @@ button.ghost:hover{border-color:#4A5D70}
   /* ------------------------------------------------------------- map key */
   /* Folded by default: five rows of key cover half the map on a phone, and the
      map is the thing he came to look at. */
-  .legendbox{bottom:calc(12px + env(safe-area-inset-bottom))}
+  /* the logo strip clears the home indicator, and the key, standing on the
+     strip, rides up with it */
+  .maparea{--logo-inset:calc(12px + env(safe-area-inset-bottom))}
   .legend{display:none}
   body[data-legend="open"][data-screen="city"] #legend-city{display:flex}
   body[data-legend="open"][data-screen="cluster"] #legend-cluster{display:flex}
