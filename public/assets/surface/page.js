@@ -1315,33 +1315,78 @@ $('save').onclick = () => {
   });
 };
 
-$('dl').onclick = () => {
-  if (!CUR) return;
-  const nice = (CUR.nhood||CITY).replace(/[^A-Za-z]/g,'').slice(0,14) || CITY;
-  const who = SLUG || CITY;
-  let rows, name;
-  if (MODE === 'walk'){
-    const g = groupStreets(CUR.neighbours, CUR.permits);
-    rows = [['address','zip','neighbourhood','street has a fresh permit','note']];
-    g.order.forEach(s => g.by[s].forEach(n =>
-      rows.push([n.a, n.zip, n.nhood, g.hot.has(s) ? 'yes' : 'no',
-                 'no qualifying roofing permit found in ' + YEARS
-                 + ' years of available public records'])));
-    rows = rows.concat([[]], [['--- permits issued in this window ---']],
-      [['address','issued','record','city record']],
-      CUR.permits.map(p => [p.a, p.d, p.record, p.url]));
-    name = who+'__walk__'+nice+'.csv';
-  } else {
-    rows = [['address','zip','neighbourhood']].concat(
-      CUR.neighbours.filter(n => PICKED.has(n.a)).map(n => [n.a, n.zip, n.nhood]));
-    name = who+'__postcards__'+nice+'.csv';
-  }
-  rows.push([]);
-  rows.push(['No permit found does not mean that roofing work was never performed. '
-           + 'Results reflect the available public permit history.']);
-  const csv = rows.map(r => r.map(v => '"'+String(v==null?'':v).replace(/"/g,'""')+'"').join(',')).join('\r\n');
-  const url = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+/* --------------------------------------------------------- the download */
+/* The file is not written here any more. Every cell of it — the zips, the
+   neighbourhoods, the permit lines, the disclaimer — is read out of the
+   snapshot by /api/export, behind the session. This end sends only what it
+   alone knows: which snapshot, which group, which mode, and which houses were
+   picked. The block list is the product, and a page anyone can open must not
+   be the thing that hands it over.
+
+   A 401 costs him nothing. The picks stay in this tab, the address bar does not
+   move, and the line under the buttons says where to sign in — he comes back to
+   the same screen with the same houses on it. */
+
+/* The name the server chose. The fallback is the formula this file used while
+   it still wrote the file itself, and it is only ever reached if the header
+   goes missing between the two. */
+function dlName(header){
+  const m = /filename="([^"]*)"/.exec(header || '');
+  if (m && m[1]) return m[1];
+  const nice = ((CUR && CUR.nhood) || CITY).replace(/[^A-Za-z]/g,'').slice(0,14) || CITY;
+  return (SLUG || CITY)
+       + (MODE === 'walk' ? '__walk__' : '__postcards__') + nice + '.csv';
+}
+
+function dlSave(blob, name){
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$('dl').onclick = () => {
+  if (!CUR) return;
+  /* the button is disabled at zero picks; this is the guard behind that one */
+  if (MODE === 'mail' && !PICKED.size) return;
+  const btn = $('dl');
+  btn.disabled = true;
+  btn.textContent = 'Preparing…';
+  /* whatever the line under the buttons last said, it was about another press */
+  setSaveNote('');
+  fetch('/api/export', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body: JSON.stringify({
+      city: CITY, trade: TRADE, snapshot_stamp: STAMP,
+      cluster: CURID, mode: MODE,
+      addresses: MODE === 'mail'
+        ? CUR.neighbours.filter(n => PICKED.has(n.a)).map(n => n.a)
+        : undefined
+    })
+  }).then(r => {
+    if (r.status === 200)
+      return r.blob().then(b =>
+        dlSave(b, dlName(r.headers.get('Content-Disposition'))));
+    if (r.status === 401){
+      setSaveNote('Sign in to download this list. <a href="/app">Sign in</a> '
+                + '— your picks stay on this page.');
+      return;
+    }
+    /* the folder this page has been reading was republished under it */
+    if (r.status === 409){
+      setSaveNote('The permit data was refreshed while this page was open. '
+                + 'Reload the page and pick again.');
+      return;
+    }
+    setSaveNote('The download failed. HTTP ' + r.status);
+  }).catch(e => {
+    setSaveNote('The download failed. ' + esc(String((e && e.message) || e)));
+  }).then(() => {
+    /* the resting state of the button, read off the mode it is in now: the tab
+       may have been switched while the request was in the air */
+    btn.textContent = MODE === 'walk' ? 'Download the walk list'
+                                      : 'Download the mailing list';
+    btn.disabled = MODE === 'mail' && !PICKED.size;
+  });
 };
