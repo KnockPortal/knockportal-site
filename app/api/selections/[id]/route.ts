@@ -23,8 +23,8 @@ type SavedSelection = {
 
 /**
  * Returns one saved selection so the surface — a vanilla script with no
- * Supabase client — can restore it from ?selection=<id>. That parameter is read
- * on the surface in the next pass; today nothing calls this.
+ * Supabase client — can restore it from ?selection=<id>. The surface reads that
+ * parameter and calls this route — see public/assets/surface/page.js.
  *
  * Ownership is not checked here, and deliberately so: the read goes through the
  * session client, and the SELECT policy already limits the rows to the caller's
@@ -67,4 +67,50 @@ export async function GET(
   }
 
   return NextResponse.json(data, { status: 200 })
+}
+
+/**
+ * Deletes one saved selection. The workspace page calls it: the list is read on
+ * the server now, and a browser-side delete would need a Supabase client in a
+ * component that otherwise has none.
+ *
+ * Ownership is not checked here either, for the same reason as the read: the
+ * delete goes through the session client and the DELETE policy decides. A row
+ * belonging to someone else is refused by that policy, comes back as no row,
+ * and is answered as a row that does not exist.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: { id: string } },
+) {
+  const supabase = supabaseSession()
+  const { data: auth, error: authError } = await supabase.auth.getUser()
+
+  if (authError || !auth.user) {
+    return NextResponse.json({ error: 'auth_required' }, { status: 401 })
+  }
+
+  if (!UUID_RE.test(params.id)) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
+
+  // The returned id is what separates "deleted" from "there was nothing to
+  // delete": a delete that matches no row is not an error in PostgREST.
+  const { data, error } = await supabase
+    .from('saved_selections')
+    .delete()
+    .eq('id', params.id)
+    .select('id')
+    .returns<{ id: string }[]>()
+
+  if (error) {
+    console.error('[selections] delete failed:', error.message)
+    return NextResponse.json({ error: 'delete_failed' }, { status: 500 })
+  }
+
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 })
+  }
+
+  return NextResponse.json({ id: data[0].id }, { status: 200 })
 }

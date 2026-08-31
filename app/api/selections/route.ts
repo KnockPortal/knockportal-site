@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseSession } from '@/lib/supabase-session'
+import { ensureWorkspace } from '@/lib/workspace'
 import { SURFACE_CITY, SURFACE_TRADE } from '@/lib/surface'
 
 export const runtime = 'nodejs'
@@ -11,16 +12,6 @@ const MAX_ADDRESSES = 2000
 const MAX_ADDRESS_LENGTH = 200
 const MAX_TEXT_LENGTH = 200
 const MAX_STAMP_LENGTH = 64
-
-// Shape confirmed against pg_proc on 2026-08-30:
-// ensure_workspace(p_source_demo_slug text)
-//   RETURNS TABLE(workspace_id uuid, member_role text, is_new boolean)
-// RETURNS TABLE means PostgREST hands back an array, not an object.
-type EnsureWorkspaceRow = {
-  workspace_id: string
-  member_role: string
-  is_new: boolean
-}
 
 type SelectionInsert = {
   workspace_id: string
@@ -54,10 +45,10 @@ function readOptionalNumber(value: unknown): number | null | undefined {
  * Creates a saved selection.
  *
  * This route exists because the surface is a vanilla script with no Supabase
- * client of its own: reading and deleting a selection happen in the browser
- * straight through RLS from the workspace page, but writing one has to come
- * from somewhere the surface can reach. The surface starts calling it in the
- * next pass; nothing calls it yet.
+ * client of its own: writing a selection has to come from somewhere the surface
+ * can reach, and it calls here. Reading the list happens on the server, in the
+ * workspace page; deleting one goes through DELETE /api/selections/<id>. All
+ * three run under the caller's session and the same RLS policies.
  *
  * The insert goes through the session client, so the row is written under the
  * caller's identity and the RLS policy — not the service role — decides whether
@@ -118,23 +109,21 @@ export async function POST(request: Request) {
   // workspace row exists yet and the insert would be refused by its policy for
   // a reason that has nothing to do with the request. The function is
   // idempotent, so calling it on every write costs a round trip and no state.
-  // The argument is passed explicitly: acquisition context belongs to the first
-  // touch in the workspace page, and this call must not overwrite it.
-  const { data: rows, error: rpcError } = await supabase.rpc('ensure_workspace', {
-    p_source_demo_slug: null,
-  })
-  if (rpcError) {
-    console.error('[selections] ensure_workspace failed:', rpcError.message)
-    return NextResponse.json({ error: 'workspace_unavailable' }, { status: 500 })
-  }
-  const workspaces = (rows ?? []) as EnsureWorkspaceRow[]
-  if (workspaces.length === 0) {
-    console.error('[selections] ensure_workspace returned no rows')
+  // The slug argument is passed explicitly as null: p_source_demo_slug carries
+  // acquisition context that belongs to the first touch in the workspace page,
+  // and this call must not overwrite it.
+  const workspace = await ensureWorkspace(supabase, null)
+  if (!workspace.ok) {
+    if (workspace.reason === 'no_rows') {
+      console.error('[selections] ensure_workspace returned no rows')
+    } else {
+      console.error('[selections] ensure_workspace failed:', workspace.detail)
+    }
     return NextResponse.json({ error: 'workspace_unavailable' }, { status: 500 })
   }
 
   const row: SelectionInsert = {
-    workspace_id: workspaces[0].workspace_id,
+    workspace_id: workspace.workspace.workspace_id,
     city: SURFACE_CITY,
     trade: SURFACE_TRADE,
     snapshot_stamp: stamp,
