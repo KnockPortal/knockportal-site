@@ -215,9 +215,9 @@ async function syncSubscription(
   const periodEndIso = periodEnd != null ? new Date(periodEnd * 1000).toISOString() : null
 
   // Build the row without current_period_end first. We only write that column when we
-  // could actually resolve it — writing null would clobber a known-good value and drop
-  // the row below the hasMetroAccess `current_period_end > now` gate, locking out an
-  // active subscriber on nothing more than an unexpected payload shape.
+  // could actually resolve it — writing null would clobber a known-good value. The term
+  // is what an entitlement check reads, and losing it would lock out an active
+  // subscriber on nothing more than an unexpected payload shape.
   const row: Record<string, unknown> = {
     customer_id: resolvedCustomerId,
     stripe_subscription_id: stripeSubId,

@@ -145,10 +145,11 @@ function toCsv(rows: Cell[][]): string {
 /**
  * Builds the export.
  *
- * The gate is the session and nothing more, which is exactly the state of order
- * item 11b: there is no entitlement object yet (item 12) and no checkout that
- * could create one (item 14). The subscription check goes in beside this one,
- * ahead of the snapshot read, when they exist.
+ * The gate is the session and nothing more. The entitlement object exists now —
+ * public.entitlements, read through lib/entitlements.ts — but nothing writes it
+ * yet: checkout arrives with order item 14, and that same item moves this gate
+ * from the session to the entitlement. The check goes in beside this one, ahead
+ * of the snapshot read.
  *
  * What the body may say is deliberately small: which snapshot, which group,
  * which mode, and — for postcards — which addresses he picked. Every other cell

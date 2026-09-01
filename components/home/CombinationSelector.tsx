@@ -39,10 +39,10 @@ type Demand = {
 type RowState = 'available' | 'subscribed' | 'data_down' | 'unavailable'
 
 /**
- * Entitlements do not exist yet — no table to read, no checkout that could
- * write one. Unreachable until entitlements (order item 12) and checkout
- * (item 14) exist; wired to a real check there. Typed as boolean so the
- * subscribed branch stays live code rather than being narrowed away.
+ * Entitlements are stored now, but nothing writes them until checkout (order
+ * item 14), and reading them here would put a cookie read on a static page.
+ * Unreachable until then; wired to a real check with checkout. Typed as boolean
+ * so the subscribed branch stays live code rather than being narrowed away.
  */
 const SUBSCRIBED: boolean = false
 
