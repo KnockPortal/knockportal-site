@@ -176,6 +176,12 @@ export default function SurfacePage({
                 <button className="ghost" id="save" hidden>
                   Save selection
                 </button>
+                {/* The mailing lives above the group: this button hands the
+                    picks of one group to it, and the group is then left for
+                    the next one. */}
+                <button className="ghost" id="tomail" hidden>
+                  Add to mailing
+                </button>
                 <button className="go" id="dl">
                   Download
                 </button>
@@ -184,6 +190,22 @@ export default function SurfacePage({
                 <p className="savenote" id="savenote" hidden></p>
               </div>
             </aside>
+          </div>
+
+          {/* Outside the panel on purpose. The panel is taken out of the layout
+              on the city screen, and the mailing has to be readable there too:
+              it is collected group by group, and the city screen is where he
+              goes to find the next one. */}
+          <div className="strip" id="strip">
+            <div className="strip-sum" id="strip-sum"></div>
+            <p className="strip-note">Collecting is free. Sending needs a subscription.</p>
+            <button className="ghost" id="mail-clear" hidden>
+              Clear the mailing
+            </button>
+            <button className="go" id="mail-send" disabled>
+              Send
+            </button>
+            <p className="strip-say" id="strip-say" hidden></p>
           </div>
         </div>
         {/* /.screen */}

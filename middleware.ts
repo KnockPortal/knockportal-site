@@ -51,6 +51,9 @@ export const config = {
   // /api/webhooks/stripe is absent under any circumstance — it reads the raw
   // body and verifies the Stripe signature, and no intermediate layer belongs
   // on that path.
+  //
+  // The mailing routes read the session on the server, and without them here an
+  // expiring session is never refreshed on the requests the surface makes.
   matcher: [
     '/app',
     '/app/:path*',
@@ -58,5 +61,7 @@ export const config = {
     '/api/export/:path*',
     '/api/selections',
     '/api/selections/:path*',
+    '/api/mailing',
+    '/api/mailing/:path*',
   ],
 }

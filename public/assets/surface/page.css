@@ -16,11 +16,15 @@
                and the group controls are gone — there is no group picked yet.
      cluster   the composition above: map + panel, walk or postcards.
 
+   Under both screens stands the strip: the mailing is collected group by group
+   and it belongs to neither, so nothing that hides the panel may touch it.
+
    Hooks page.js depends on (ids + emitted classes):
-   #map #back #pick #tab-walk #tab-mail #pane #count #clear #dl
+   #map #back #pick #tab-walk #tab-mail #pane #count #clear #dl #tomail
+   #strip #strip-sum #strip-say #mail-clear #mail-send
    #dateline #lede-city #lede-cluster #notice #provenance #staleness #zoomnote
    .yrs .win .rsince   (runtime text slots)
-   .grp .st .row .row.pick .row.on .z .hint
+   .grp .st .row .row.pick .row.on .row.inmail .z .hint
    ========================================================================= */
 
 /* ------------------------------------------------------------------ fonts */
@@ -318,6 +322,16 @@ a.mapboxgl-ctrl-logo{margin:0;height:var(--logo-h)}
   border-color:var(--green);background:var(--green)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='9'%3E%3Cpath d='M1 4.5l3 3 6-7' fill='none' stroke='%230F1822' stroke-width='2.2'/%3E%3C/svg%3E") no-repeat center;
 }
+/* Already in the mailing. It has to be legible at the same time as .on, which
+   is a different fact about the same row — what he is picking here, against
+   what the mailing already holds — so this is a mark and an edge rather than a
+   second colour of the row: a row cannot be two colours, but it can carry a
+   stamp. */
+.row.pick.inmail{box-shadow:inset 3px 0 0 var(--line)}
+.row.pick.inmail::after{
+  content:'\2709';flex:none;
+  font:15px/1 system-ui,sans-serif;color:var(--mute);
+}
 /* walk mode rows are compact: no checkbox column, tighter rhythm */
 body:has(#tab-walk[aria-selected=true]) .row{padding:9px 22px}
 
@@ -343,6 +357,28 @@ button.ghost:hover{border-color:#4A5D70}
 /* the whole width of the wrapped foot row: a sentence squeezed in beside the
    counter and three buttons is a sentence nobody reads */
 .savenote{flex-basis:100%;margin:0;font-size:13px;line-height:1.45;color:var(--mute)}
+
+/* ------------------------------------------------------------------ strip */
+/* The mailing, under both screens. Nothing keyed on body[data-screen] may hide
+   it: on the city screen the panel is out of the layout altogether, and that is
+   the screen he crosses on the way to the next group — the mailing has to be
+   readable while he does. In the flex column of .screen it is one line that
+   does not stretch; the stage keeps every pixel it had. */
+.strip{
+  flex:none;
+  display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  padding:12px 28px;
+  border-top:1px solid var(--line);background:var(--slate);
+}
+/* what is in it, at the weight of the panel's own counter */
+.strip-sum{flex:none;font-size:14px;color:var(--mute)}
+.strip-sum b{font:700 24px/1 var(--cond);color:var(--paper);margin-right:2px;vertical-align:-1px}
+/* the standing sentence, in the voice of .savenote: it is not news about this
+   mailing, it is the terms every mailing is collected under */
+.strip-note{flex:1;min-width:200px;margin:0;font-size:13px;line-height:1.45;color:var(--mute)}
+/* the answer to the last press, on a line of its own for the same reason
+   .savenote takes one */
+.strip-say{flex-basis:100%;margin:0;font-size:13px;line-height:1.45;color:var(--lede)}
 
 /* ---------------------------------------------------------------- endnote */
 .endnote{padding:22px 28px 40px;max-width:92ch}
@@ -416,6 +452,33 @@ button.ghost:hover{border-color:#4A5D70}
         padding-bottom:calc(14px + env(safe-area-inset-bottom))}
   .foot .go{flex:1 1 100%;padding:14px 18px;font-size:16px}   /* thumb bar */
   .endnote{padding:20px 18px 120px}
+
+  /* -------------------------------------------------------------- strip */
+  /* The page's own bottom bar: it holds the floor for the whole of .screen, so
+     the mailing does not scroll away while he works a list — and it clears the
+     home indicator, like the logo strip above it does.
+     The panel's foot is sticky too, and two bars cannot both stand on the
+     floor. CSS cannot measure one box against another, so the height the foot
+     stands off is a number and the strip is held open to exactly that number.
+     The answer line is lifted out of the flow for the same reason: a sentence
+     appearing under the buttons would otherwise push the bar past it. */
+  :root{--strip-h:calc(92px + env(safe-area-inset-bottom))}
+  .foot{bottom:var(--strip-h)}
+  .strip{
+    position:sticky;bottom:0;z-index:21;
+    min-height:var(--strip-h);align-content:center;gap:8px 12px;
+    padding:12px 18px calc(12px + env(safe-area-inset-bottom));
+    box-shadow:0 -8px 24px rgba(0,0,0,.35);
+  }
+  .strip-sum{flex:1 1 auto;min-width:0}
+  /* the two buttons keep the first line; the sentence takes the second */
+  .strip-note{flex-basis:100%;order:3;min-width:0;font-size:12.5px}
+  .strip-say{
+    position:absolute;left:18px;right:18px;bottom:100%;
+    margin:0 0 8px;padding:8px 11px;
+    background:var(--slate);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 -6px 18px rgba(0,0,0,.3);
+  }
 }
 
 /* ------------------------------------------------------------------ print */
@@ -439,6 +502,9 @@ button.ghost:hover{border-color:#4A5D70}
   .row .z{color:#333}
   .row.pick::before{border-color:#999}
   .row.on::before{background:#000;border-color:#000}
+  /* a printed list is carried down a street; the mailing is not on it, and two
+     buttons that cannot be pressed on paper are noise */
+  .strip{display:none}
   .endnote{padding:14px 0 0;max-width:none}
   .note,.atcost,.provenance,.staleness{color:#000}
 }

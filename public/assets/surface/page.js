@@ -20,8 +20,12 @@
      #tab-walk #tab-mail   two buttons, aria-selected carries the state
      #pane     scrolling container the lists are written into
      #count    line under the lists
-     #clear #save #dl  buttons
+     #clear #save #tomail #dl  buttons
      #savenote  line under the buttons; how the last save went
+     #strip     the mailing, standing under both screens
+     #strip-sum what is in the mailing and what printing it costs
+     #mail-clear #mail-send   the mailing's own two buttons
+     #strip-say line under the strip; how the last mailing call went
      #dateline #lede-city #lede-cluster #notice #provenance #staleness
      #zoomnote  empty plate over the map; the neighbour layer's own message
      .yrs .win .rsince    runtime text slots, filled wherever they appear
@@ -121,6 +125,14 @@ const SELECTION_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 /* the save button's resting label, put back after every attempt */
 const SAVE_LABEL = 'Save selection';
 
+/* resting labels of the three mailing buttons, put back after every attempt */
+const TOMAIL_LABEL = 'Add to mailing';
+const MAIL_CLEAR_LABEL = 'Clear the mailing';
+const MAIL_SEND_LABEL = 'Send';
+/* How long the clear button stays armed after the first press. The mailing is
+   collected across several groups, and one stray tap must not empty it. */
+const CLEAR_CONFIRM_MS = 4000;
+
 /* ---------------------------------------------------------------- state */
 let STAMP   = null;   // snapshot folder, fixed for the whole session
 let PERMITS = [];     // every permit in the window, city-wide
@@ -136,6 +148,17 @@ let MODE  = 'mail';         // walk | mail — postcards lead; the channel is th
 const PICKED = new Set();   // addresses selected for postcards
 let MAILN = null;           // how many postcards he wants; null = not set for this cluster
 const pinMarkers = [];
+
+/* The mailing. It stands above the group, which is the whole of why it is up
+   here beside PICKED and not inside it: entering a group empties PICKED and
+   never touches this. Nothing in this file adds to it or counts it — every one
+   of the three is overwritten from the server's answer, and the cost arrives
+   already counted, in cents. */
+const CART = new Set();     // addresses already in the mailing
+let CART_ID = null;         // the draft's id, or null while there is no draft
+let CART_COST = 0;          // what printing it costs, in cents, as the server said
+/* the timer of the armed clear button; null when it is at rest */
+let CLEAR_ARMED = null;
 
 /* A saved selection on its way back onto the map. The row is asked for at load,
    at the same moment as the data and not after it: the two are independent, and
@@ -200,6 +223,11 @@ fetch(DATA_BASE + 'latest.json', {cache:'no-cache'})
    neither the snapshot nor the map, and waiting would put a whole round trip
    between the man and his own selection. */
 restoreStart();
+
+/* The mailing is asked for here too, for the same reason: it belongs to no
+   snapshot and to no group, and the strip should be telling the truth by the
+   time the first map tile lands. */
+cartLoad();
 
 function ok(r){ if (!r.ok) throw new Error(r.status); return r.json(); }
 function snap(file){ return DATA_BASE + STAMP + '/' + file; }
@@ -536,6 +564,9 @@ function wireCity(){
 function enterCity(missingId){
   const note = $('notice');
   setSaveNote('');          // whatever was saved, it was saved on another screen
+  /* the mailing itself crosses the screen; only the line about the last call
+     to it does not */
+  sayStrip(''); resetClearConfirm();
   if (missingId){
     note.textContent = 'That group is not in the current data — the city map below is up to date.';
     note.hidden = false;
@@ -552,6 +583,7 @@ function enterCity(missingId){
 function enterCluster(id){
   $('notice').hidden = true;
   setSaveNote('');          // a different group is a different selection
+  sayStrip(''); resetClearConfirm();
   if (SCREEN === 'cluster' && String(CURID) === String(id)) return;
   SCREEN = 'cluster'; CURID = String(id);
   document.body.dataset.screen = 'cluster';
@@ -1087,6 +1119,7 @@ function render(){
   const dl = $('dl');
   const clear = $('clear');
   const save = $('save');
+  const tomail = $('tomail');
   /* What the save line says stops being true the moment the pick changes, and
      every change of the pick comes back through here. */
   setSaveNote('');
@@ -1123,6 +1156,7 @@ function render(){
     /* nothing is picked on a walk — the list is the whole block, and it is the
        download that carries it */
     save.hidden = true;
+    tomail.hidden = true;
   } else {
     if (MAILN === null){ MAILN = defaultN(); autoPick(MAILN); }
     let h = '<div class="mailn"><label for="mailn-in">Postcards</label>'
@@ -1144,7 +1178,10 @@ function render(){
       }
       h += '<div class="st'+(hot?' hot':'')+'">'+esc(s)+'<span>'+g.by[s].length+'</span></div>';
       g.by[s].forEach(n => {
-        h += '<div class="row pick'+(PICKED.has(n.a)?' on':'')+'" data-a="'+esc(n.a)+'">'
+        /* two facts about one row, and they are independent: .on is what he is
+           picking here, .inmail is what the mailing already holds */
+        h += '<div class="row pick'+(PICKED.has(n.a)?' on':'')+(CART.has(n.a)?' inmail':'')
+           + '" data-a="'+esc(n.a)+'">'
            + '<b>'+esc(n.a)+'</b><span class="z">'+esc(n.zip)+'</span></div>';
       });
     });
@@ -1163,6 +1200,7 @@ function render(){
     dl.disabled = !n;
     clear.hidden = !n;
     save.hidden = !n;
+    tomail.hidden = !n;
   }
 }
 
@@ -1314,6 +1352,180 @@ $('save').onclick = () => {
     btn.textContent = SAVE_LABEL;
   });
 };
+
+/* ------------------------------------------------------------ the mailing */
+/* The mailing is the thing above the group. A group is worked, its picks are
+   handed over, and the next group is opened — so nothing about it may live in
+   PICKED, in this tab, or in a counter of our own. The server holds it: every
+   call answers with the whole cart, and the three variables at the top of this
+   file are overwritten from that answer and from nothing else.
+
+   The cost arrives counted, in cents. This file has no price in it and no
+   arithmetic on one — it puts a dollar sign in front of what it was handed. */
+function money(cents){
+  return '$' + (Number(cents || 0) / 100).toFixed(2);
+}
+
+/* The one line of feedback the strip has, under its own buttons — the panel's
+   #savenote is on the other side of the layout and is gone on the city screen. */
+function sayStrip(html){
+  const el = $('strip-say');
+  if (!el) return;
+  el.innerHTML = html || '';
+  el.hidden = !html;
+}
+
+function resetClearConfirm(){
+  if (CLEAR_ARMED){ clearTimeout(CLEAR_ARMED); CLEAR_ARMED = null; }
+  const btn = $('mail-clear');
+  if (btn) btn.textContent = MAIL_CLEAR_LABEL;
+}
+
+function renderStrip(){
+  const n = CART.size;
+  $('strip-sum').innerHTML = n
+    ? '<b>' + n + '</b> address' + (n === 1 ? '' : 'es') + ' &middot; ' + money(CART_COST) + ' print'
+    : 'Nothing in this mailing yet';
+  $('mail-clear').hidden = !n;
+  $('mail-send').disabled = !n;
+  if (!n) resetClearConfirm();   // nothing left to confirm the clearing of
+}
+
+/* The whole answer, taken as it stands. */
+function cartApply(json){
+  CART.clear();
+  const list = (json && json.addresses) || [];
+  list.forEach(a => CART.add(a));
+  CART_ID   = (json && json.mailing_id) || null;
+  CART_COST = (json && json.print_cost_cents) || 0;
+  renderStrip();
+  /* the rows carry the mark, so the list is redrawn to show what moved */
+  if (SCREEN === 'cluster' && MODE === 'mail') render();
+}
+
+/* Asked once, at load. A mailing that cannot be read is not an error worth a
+   sentence: the strip says it is empty, which is what the man can act on, and
+   the next call to it will say otherwise. */
+function cartLoad(){
+  fetch('/api/mailing?city=' + encodeURIComponent(CITY) + '&trade=' + encodeURIComponent(TRADE),
+        {credentials:'same-origin'})
+    .then(r => (r.status === 200 ? r.json() : null))
+    .then(j => { if (j) cartApply(j); })
+    .catch(() => {});
+}
+
+/* Every change goes through here, and every answer replaces the cart whole. The
+   status code is carried up on the error so the caller can say which refusal it
+   was; a network failure arrives with none. */
+function cartPost(body){
+  return fetch('/api/mailing', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin', body: JSON.stringify(body)
+  }).then(r => {
+    if (r.status === 200) return r.json().then(j => { cartApply(j); return j; });
+    const err = new Error('HTTP ' + r.status);
+    err.status = r.status;
+    throw err;
+  });
+}
+
+function cartFailed(e){
+  if (e && e.status === 409){ sayStrip('This mailing is full at 2000 addresses.'); return; }
+  if (e && e.status){ sayStrip('Something went wrong. HTTP ' + e.status); return; }
+  sayStrip('Something went wrong. ' + esc(String((e && e.message) || e)));
+}
+
+/* The picks of this group, handed to the mailing. They go over in the order of
+   the neighbour list and with the same neighbourhood and street line a saved
+   selection carries — it is the same body, minus what only a selection needs. */
+$('tomail').onclick = () => {
+  if (!CUR || MODE === 'walk' || !PICKED.size) return;
+  const btn = $('tomail');
+  const sel = selectionBody();
+  /* what actually landed is the difference the cart shows: an address already
+     in the mailing is not added a second time */
+  const before = CART.size;
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  sayStrip('');
+  resetClearConfirm();
+  cartPost({
+    city: sel.city, trade: sel.trade, op: 'add',
+    addresses: sel.addresses, snapshot_stamp: sel.snapshot_stamp,
+    nhood: sel.nhood, label: sel.label
+  }).then(() => {
+    const added = CART.size - before;
+    sayStrip(added > 0 ? added + ' added to the mailing.' : 'Already in the mailing.');
+  }).catch(cartFailed).then(() => {
+    btn.disabled = false;
+    btn.textContent = TOMAIL_LABEL;
+  });
+};
+
+/* Two presses, because what it empties was collected group by group and one
+   press of a small button on a phone is not an intention. */
+$('mail-clear').onclick = () => {
+  if (!CART.size) return;
+  if (!CLEAR_ARMED){
+    $('mail-clear').textContent = 'Click again to clear';
+    CLEAR_ARMED = setTimeout(resetClearConfirm, CLEAR_CONFIRM_MS);
+    return;
+  }
+  resetClearConfirm();
+  sayStrip('');
+  cartPost({city: CITY, trade: TRADE, op: 'clear'})
+    .then(() => { sayStrip('The mailing is empty again.'); })
+    .catch(cartFailed);
+};
+
+/* The gate. Nothing is sent from here yet and the button says as much through
+   whatever the server answers: the mailing stays where it is in every case. */
+$('mail-send').onclick = () => {
+  if (!CART.size) return;
+  const btn = $('mail-send');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  sayStrip('');
+  resetClearConfirm();
+  fetch('/api/mailing/send', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body: JSON.stringify({city: CITY, trade: TRADE})
+  }).then(r => {
+    if (r.status === 401){
+      sayStrip('Sending needs a subscription. Checkout is not open yet — the mailing stays on this page.');
+      return;
+    }
+    if (r.status === 402)
+      return r.json().catch(() => null).then(j => {
+        const reason = (j && j.reason) || 'none';
+        if (reason === 'status')
+          sayStrip('The subscription is not active. Checkout is not open yet.');
+        else if (reason === 'expired')
+          sayStrip('The subscription has run out. Checkout is not open yet.');
+        else
+          sayStrip('Sending needs a subscription. Checkout is not open yet.');
+      });
+    if (r.status === 501){
+      sayStrip('Sending is not available yet — the postcard and the approval step are not built.');
+      return;
+    }
+    if (r.status === 503){
+      sayStrip('We could not check the subscription. Try again in a moment.');
+      return;
+    }
+    sayStrip('Something went wrong. HTTP ' + r.status);
+  }).catch(e => {
+    sayStrip('Something went wrong. ' + esc(String((e && e.message) || e)));
+  }).then(() => {
+    btn.textContent = MAIL_SEND_LABEL;
+    btn.disabled = !CART.size;
+  });
+};
+
+/* The strip is in the markup before any answer is: it says what it holds now,
+   which is nothing, rather than standing empty until the first round trip. */
+renderStrip();
 
 /* --------------------------------------------------------- the download */
 /* The file is not written here any more. Every cell of it — the zips, the
