@@ -18,7 +18,13 @@ const RESEND_COOLDOWN_SECONDS = 60
 
 const normalise = (value: string) => value.trim().toLowerCase()
 
-export default function SignInPanel() {
+/**
+ * `next` is where he was going when the sign-in stopped him — a surface
+ * address, already checked against RETURN_TO_RE by the page that renders this.
+ * Without it the session lands him in the workspace, which is where he asked to
+ * be; with it he is put back on the page he was working.
+ */
+export default function SignInPanel({ next }: { next?: string | null }) {
   const supabase = supabaseBrowser()
   const router = useRouter()
 
@@ -63,10 +69,15 @@ export default function SignInPanel() {
   // answered by asking the server again rather than by flipping local state.
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.refresh()
+      if (!session) return
+      // A full navigation and not router.refresh(): the destination is another
+      // page altogether, and it is a page this app never rendered — the surface
+      // is served outside the router's tree.
+      if (next) window.location.assign(next)
+      else router.refresh()
     })
     return () => sub.subscription.unsubscribe()
-  }, [supabase, router])
+  }, [supabase, router, next])
 
   async function sendCode() {
     const address = normalise(email)
@@ -115,7 +126,8 @@ export default function SignInPanel() {
       return
     }
     setCode('')
-    router.refresh()
+    if (next) window.location.assign(next)
+    else router.refresh()
   }
 
   return (

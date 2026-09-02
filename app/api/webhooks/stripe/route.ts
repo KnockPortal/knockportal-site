@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Stripe from 'stripe'
 import { supabaseAdmin } from '@/lib/supabase-server'
-import { TRADE_CATEGORIES } from '@/lib/categories'
+import { getStripe, readCellMetadata } from '@/lib/billing'
 
 export const runtime = 'nodejs'
-
-// Verticals a checkout may grant. Derived from the shared category vocabulary rather than
-// hardcoded, so flipping a trade live in lib/categories.ts is the only edit needed here.
-const LIVE_TRADE_SLUGS: ReadonlySet<string> = new Set(
-  TRADE_CATEGORIES.filter((c) => c.live).map((c) => c.slug),
-)
-
-// Lazy singleton — construct on first request, not at module load. Building the route
-// (Next collects page data by importing this module) must not require STRIPE_SECRET_KEY
-// to be present; a CI build with no secrets would otherwise fail at `new Stripe(undefined)`.
-let _stripe: Stripe | null = null
-function getStripe(): Stripe {
-  if (!_stripe) {
-    // @ts-ignore — pinned to API version declared at webhook endpoint
-    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: '2026-06-24.dahlia' })
-  }
-  return _stripe
-}
 
 type DB = ReturnType<typeof supabaseAdmin>
 
@@ -84,13 +66,21 @@ async function dispatch(event: Stripe.Event, db: DB) {
       break
 
     case 'customer.subscription.updated':
-      await syncSubscription((event.data.object as Stripe.Subscription).id, null, db)
+      await syncEntitlement((event.data.object as Stripe.Subscription).id, db)
       break
 
     case 'customer.subscription.deleted':
+      // No re-fetch here, unlike everywhere else: the object is gone at Stripe,
+      // so the event is the last word there will ever be about it. The term is
+      // left as it stands — a canceled row is refused on the status alone, and
+      // the date it ran to is the only record of when it did.
       await db
-        .from('subscriptions')
-        .update({ status: 'canceled', updated_at: new Date().toISOString() })
+        .from('entitlements')
+        .update({
+          status: 'canceled',
+          cancel_at_period_end: false,
+          updated_at: new Date().toISOString(),
+        })
         .eq('stripe_subscription_id', (event.data.object as Stripe.Subscription).id)
       break
 
@@ -98,7 +88,7 @@ async function dispatch(event: Stripe.Event, db: DB) {
     case 'invoice.payment_succeeded': {
       const inv = event.data.object as Stripe.Invoice
       const subId = extractInvoiceSubscriptionId(inv)
-      if (subId) await syncSubscription(subId, null, db)
+      if (subId) await syncEntitlement(subId, db)
       break
     }
   }
@@ -117,99 +107,72 @@ function extractInvoiceSubscriptionId(inv: Stripe.Invoice): string | null {
   return null
 }
 
+/**
+ * The one place the customer id is mirrored onto the workspace. It is written
+ * here and nowhere else because this is the one event that carries both halves
+ * at once, and the portal has nothing to open without it.
+ */
 async function onCheckoutCompleted(session: Stripe.Checkout.Session, db: DB) {
   const stripeCustomerId =
     typeof session.customer === 'string' ? session.customer : session.customer?.id
   const stripeSubId =
     typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
 
-  if (!stripeCustomerId || !stripeSubId) return
-
-  // Mirror customer — fetch canonical data from Stripe
-  const stripeCust = await getStripe().customers.retrieve(stripeCustomerId)
-  if (!('deleted' in stripeCust)) {
-    await db.from('customers').upsert(
-      { stripe_customer_id: stripeCustomerId, email: stripeCust.email, name: stripeCust.name },
-      { onConflict: 'stripe_customer_id' },
-    )
-  }
-
-  const { data: customer } = await db
-    .from('customers')
-    .select('id')
-    .eq('stripe_customer_id', stripeCustomerId)
-    .single()
-
-  await syncSubscription(stripeSubId, customer?.id ?? null, db)
-
-  // Grants below both key off our subscription row — look it up once.
-  const { data: sub } = await db
-    .from('subscriptions')
-    .select('id')
-    .eq('stripe_subscription_id', stripeSubId)
-    .single()
-
-  if (!sub) return
-
-  // Associate subscription with SF metro — v1 default (one metro only)
-  // TODO multi-metro: derive metro from Payment Link or session.metadata.metro_slug
-  const { data: sfMetro } = await db
-    .from('metros')
-    .select('id')
-    .eq('slug', 'san-francisco')
-    .single()
-
-  if (sfMetro) {
-    await db
-      .from('subscription_metros')
-      .upsert(
-        { subscription_id: sub.id, metro_id: sfMetro.id },
-        { onConflict: 'subscription_id,metro_id', ignoreDuplicates: true },
-      )
-  }
-
-  // Associate subscription with the trade the buyer picked on the pricing page, carried
-  // through Checkout as client_reference_id. A missing or unrecognized value is logged and
-  // skipped, never thrown: a bad query param must not fail the webhook or roll back the
-  // metro grant above.
-  const vertical = session.client_reference_id
-  if (vertical && LIVE_TRADE_SLUGS.has(vertical)) {
-    await db
-      .from('subscription_verticals')
-      .upsert(
-        { subscription_id: sub.id, vertical },
-        { onConflict: 'subscription_id,vertical', ignoreDuplicates: true },
-      )
-  } else {
-    console.error('[stripe-webhook] checkout session has no valid trade — no vertical granted', {
-      stripeSubscriptionId: stripeSubId,
-      clientReferenceId: session.client_reference_id,
+  if (!stripeCustomerId || !stripeSubId) {
+    console.error('[stripe-webhook] checkout session without customer or subscription', {
+      sessionId: session.id,
     })
+    return
   }
+
+  // A session with no cell on it is not ours to write a right for: a session of
+  // the retired tariff model, or somebody else's endpoint pointed at this URL.
+  // It is logged and dropped rather than thrown — a foreign session must not
+  // park this event in the ledger as an error and have Stripe retry it forever.
+  const cell = readCellMetadata(session.metadata)
+  if (!cell) {
+    console.error('[stripe-webhook] checkout session without cell metadata', {
+      sessionId: session.id,
+    })
+    return
+  }
+
+  const { error: customerErr } = await db
+    .from('workspaces')
+    .update({ stripe_customer_id: stripeCustomerId })
+    .eq('id', cell.workspace_id)
+
+  // This one throws. Without the customer id on the workspace the portal has no
+  // door, and the man has already paid: an unwritten column is ours to retry.
+  if (customerErr) {
+    throw new Error('workspace customer write failed · ' + customerErr.message)
+  }
+
+  await syncEntitlement(stripeSubId, db)
 }
 
-// Re-fetch from Stripe to get canonical status — never trust event payload alone.
-async function syncSubscription(
-  stripeSubId: string,
-  customerId: string | null,
-  db: DB,
-) {
+/**
+ * The right, as Stripe currently states it. Re-fetched rather than read off the
+ * event payload — the truth about a subscription is at Stripe, and events
+ * arrive out of order.
+ *
+ * A second subscription on the same cell overwrites the first row: the unique
+ * index is on the cell, not on the subscription. The last sync wins, which is a
+ * known simplification and not an accident. It is unreachable through this
+ * site — /api/billing/checkout answers 409 to a workspace that already holds
+ * the right — and it would take a subscription created straight in the Stripe
+ * dashboard to produce one.
+ */
+async function syncEntitlement(stripeSubId: string, db: DB) {
   const sub = await getStripe().subscriptions.retrieve(stripeSubId)
-  const priceId = sub.items.data[0]?.price?.id ?? null
 
-  // Resolve our internal customer_id if not provided (e.g. out-of-order delivery)
-  let resolvedCustomerId = customerId
-  if (!resolvedCustomerId) {
-    const stripeCustomerId = typeof sub.customer === 'string' ? sub.customer : sub.customer.id
-    const { data: existing } = await db
-      .from('customers')
-      .select('id')
-      .eq('stripe_customer_id', stripeCustomerId)
-      .single()
-    resolvedCustomerId = existing?.id ?? null
+  // Same reasoning as the checkout branch: a subscription of the retired model
+  // names no cell, and it must not drop this event into the ledger as an error.
+  const cell = readCellMetadata(sub.metadata)
+  if (!cell) {
+    console.error('[stripe-webhook] subscription without cell metadata', { stripeSubId })
+    return
   }
-
-  const planKey = priceId ? await resolvePlanKey(priceId, db) : null
 
   const periodEnd = resolveCurrentPeriodEnd(sub)
   const periodEndIso = periodEnd != null ? new Date(periodEnd * 1000).toISOString() : null
@@ -218,18 +181,29 @@ async function syncSubscription(
   // could actually resolve it — writing null would clobber a known-good value. The term
   // is what an entitlement check reads, and losing it would lock out an active
   // subscriber on nothing more than an unexpected payload shape.
+  //
+  // On a first sync with no resolvable term there is no known-good value to
+  // keep, and the upsert fails on the not-null column. That is the right
+  // outcome and it is left alone: a right with no term is a right nothing can
+  // check, and a default would invent one.
   const row: Record<string, unknown> = {
-    customer_id: resolvedCustomerId,
-    stripe_subscription_id: stripeSubId,
-    stripe_price_id: priceId,
-    plan_key: planKey,
+    workspace_id: cell.workspace_id,
+    city: cell.city,
+    trade: cell.trade,
     status: sub.status,
     cancel_at_period_end: sub.cancel_at_period_end,
+    stripe_subscription_id: stripeSubId,
     updated_at: new Date().toISOString(),
   }
   if (periodEndIso) row.current_period_end = periodEndIso
 
-  await db.from('subscriptions').upsert(row, { onConflict: 'stripe_subscription_id' })
+  const { error } = await db
+    .from('entitlements')
+    .upsert(row, { onConflict: 'workspace_id,city,trade' })
+
+  if (error) {
+    throw new Error('entitlement upsert failed · ' + error.message)
+  }
 }
 
 // current_period_end moved off Subscription onto each SubscriptionItem in 2026-06-24.dahlia.
@@ -241,13 +215,4 @@ function resolveCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
   const legacy = (sub as unknown as { current_period_end?: number }).current_period_end
   if (typeof legacy === 'number') return legacy
   return null
-}
-
-async function resolvePlanKey(priceId: string, db: DB): Promise<string | null> {
-  const { data } = await db
-    .from('plans')
-    .select('key')
-    .or(`stripe_price_monthly.eq.${priceId},stripe_price_yearly.eq.${priceId}`)
-    .single()
-  return data?.key ?? null
 }

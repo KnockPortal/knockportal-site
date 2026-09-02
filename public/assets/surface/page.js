@@ -133,6 +133,39 @@ const MAIL_SEND_LABEL = 'Send';
    collected across several groups, and one stray tap must not empty it. */
 const CLEAR_CONFIRM_MS = 4000;
 
+/* Where the sign-in is sent, and where it sends him back. This page has no
+   session and the workspace page has no idea what he was doing — so the way
+   back travels on the address. location.search goes over whole: ?from= is what
+   makes the personal variant personal, and returning without it returns him to
+   a different page than he left. */
+const NEXT_PARAM = () => '/app?next=' + encodeURIComponent(location.pathname + location.search);
+
+/* Every sentence the paid side of the page says. They are gathered here rather
+   than written where they are used because the same three refusals reach the
+   man from two different places — the strip and the panel — and a wall that
+   words itself differently depending on which button he pressed is two walls.
+   Nothing here states a price: {PRICE} is whatever the server was told by
+   Stripe, formatted by money(). */
+const S = {
+  SIGN_IN_SEND: 'Sign in to send this mailing. <a href="' + NEXT_PARAM()
+              + '">Sign in</a> — your addresses stay with you.',
+  OFFER: offer => 'Sending is by subscription: <b>' + money(offer.amount_cents)
+               + '/month</b> for ' + esc(offer.label)
+               + '. <a href="#" data-kp-subscribe>Subscribe</a>',
+  OFFER_NO_PRICE: 'Sending is by subscription. <a href="#" data-kp-subscribe>Subscribe</a>',
+  NOT_ACTIVE: 'The subscription is not active. <a href="/app">Manage billing</a>',
+  EXPIRED: offer => 'The subscription has run out. <a href="#" data-kp-subscribe>Renew</a>',
+  ALREADY: 'This workspace already has the subscription. Press Send again.',
+  CHECKOUT_FAIL: code => 'We could not open checkout. HTTP ' + code,
+  RETURN_SUCCESS: 'Payment received. Press Send again — if the subscription is still '
+                + 'being confirmed, try again in a moment.',
+  RETURN_CANCEL: 'Checkout was cancelled. The mailing stays on this page.',
+  SIGN_IN_DOWNLOAD: 'Sign in to download this list. <a href="' + NEXT_PARAM()
+                  + '">Sign in</a> — your picks stay on this page.',
+  DOWNLOAD_NEEDS_SUB: 'Downloading this list needs a subscription. Subscribe from the '
+                    + 'mailing strip below — press Send.'
+};
+
 /* ---------------------------------------------------------------- state */
 let STAMP   = null;   // snapshot folder, fixed for the whole session
 let PERMITS = [];     // every permit in the window, city-wide
@@ -159,6 +192,11 @@ let CART_ID = null;         // the draft's id, or null while there is no draft
 let CART_COST = 0;          // what printing it costs, in cents, as the server said
 /* the timer of the armed clear button; null when it is at rest */
 let CLEAR_ARMED = null;
+/* a checkout request is in the air; a second Subscribe click is ignored */
+let CHECKOUT_BUSY = false;
+/* the word about a return from checkout is said once per load, whatever else
+   redraws the strip afterwards */
+let RETURN_SAID = false;
 
 /* A saved selection on its way back onto the map. The row is asked for at load,
    at the same moment as the data and not after it: the two are independent, and
@@ -1381,6 +1419,69 @@ function resetClearConfirm(){
   if (btn) btn.textContent = MAIL_CLEAR_LABEL;
 }
 
+/* ------------------------------------------------------------- checkout */
+/* The page never names a price and never charges one: it asks the server for a
+   Checkout Session and goes where it is sent. `sayer` is whichever line is in
+   front of the man — the strip's or the panel's — because the same offer is
+   reachable from both and an answer written into the other one is an answer he
+   never sees. */
+function startCheckout(sayer){
+  if (CHECKOUT_BUSY) return;
+  CHECKOUT_BUSY = true;
+  fetch('/api/billing/checkout', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin',
+    body: JSON.stringify({
+      city: CITY, trade: TRADE,
+      /* the address he is standing on, so Stripe hands him back to the same
+         page with the same mailing under it */
+      return_to: location.pathname + location.search
+    })
+  }).then(r => {
+    if (r.status === 200)
+      return r.json().then(j => { location.assign(j.url); });
+    if (r.status === 401){ sayer(S.SIGN_IN_SEND); return; }
+    if (r.status === 409){ sayer(S.ALREADY); return; }
+    sayer(S.CHECKOUT_FAIL(r.status));
+    CHECKOUT_BUSY = false;
+  }).catch(e => {
+    sayer('Something went wrong. ' + esc(String((e && e.message) || e)));
+    CHECKOUT_BUSY = false;
+  });
+  /* nothing releases the flag on the 200 path: the browser is leaving */
+}
+
+/* One handler for every Subscribe link there will ever be. The links are
+   written into #strip-say and #savenote as HTML, which throws away whatever was
+   there before — so a listener hung on the link itself would have to be hung
+   again after every sentence. This one is hung once, on the document. */
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  const link = t && t.closest ? t.closest('[data-kp-subscribe]') : null;
+  if (!link) return;
+  ev.preventDefault();
+  const strip = $('strip');
+  startCheckout(strip && strip.contains(link) ? sayStrip : setSaveNote);
+});
+
+/* Coming back from Stripe. Nothing here is taken as proof of anything: the
+   right is written by the webhook against what Stripe says, and this is only
+   the word to the man that he has landed. The parameter is then taken off the
+   address so a reload does not say it a second time — the rest of the query,
+   ?from= above all, stays exactly as it was. */
+function sayCheckoutReturn(){
+  if (RETURN_SAID) return;
+  RETURN_SAID = true;
+  const params = new URLSearchParams(location.search);
+  const outcome = params.get('checkout');
+  if (outcome !== 'success' && outcome !== 'cancel') return;
+  sayStrip(outcome === 'success' ? S.RETURN_SUCCESS : S.RETURN_CANCEL);
+  params.delete('checkout');
+  const q = params.toString();
+  history.replaceState(history.state, '',
+    location.pathname + (q ? '?' + q : '') + location.hash);
+}
+
 function renderStrip(){
   const n = CART.size;
   $('strip-sum').innerHTML = n
@@ -1389,6 +1490,12 @@ function renderStrip(){
   $('mail-clear').hidden = !n;
   $('mail-send').disabled = !n;
   if (!n) resetClearConfirm();   // nothing left to confirm the clearing of
+  /* The word about the return waits for this moment and not for the load: the
+     strip is a node the server rendered, this file runs before React hydrates,
+     and a synchronous write into it makes the two trees disagree — see the
+     paragraph under the mailing handlers. By the time the cart has answered,
+     hydration is long over. */
+  sayCheckoutReturn();
 }
 
 /* The whole answer, taken as it stands. */
@@ -1478,8 +1585,11 @@ $('mail-clear').onclick = () => {
     .catch(cartFailed);
 };
 
-/* The gate. Nothing is sent from here yet and the button says as much through
-   whatever the server answers: the mailing stays where it is in every case. */
+/* The gate, and the counter beside it. Nothing is sent from here yet and the
+   button says as much through whatever the server answers — but a refusal for
+   want of a subscription now carries the price and a way to pay it. The mailing
+   stays where it is in every case, including the one where he leaves for
+   Stripe: it is held by the server, not by this tab. */
 $('mail-send').onclick = () => {
   if (!CART.size) return;
   const btn = $('mail-send');
@@ -1493,18 +1603,21 @@ $('mail-send').onclick = () => {
     body: JSON.stringify({city: CITY, trade: TRADE})
   }).then(r => {
     if (r.status === 401){
-      sayStrip('Sending needs a subscription. Checkout is not open yet — the mailing stays on this page.');
+      sayStrip(S.SIGN_IN_SEND);
       return;
     }
     if (r.status === 402)
       return r.json().catch(() => null).then(j => {
         const reason = (j && j.reason) || 'none';
+        const offer = j && j.offer;
+        /* Not active is the one refusal with nothing to sell: the subscription
+           exists and is in the wrong state, and that is settled at Stripe. */
         if (reason === 'status')
-          sayStrip('The subscription is not active. Checkout is not open yet.');
+          sayStrip(S.NOT_ACTIVE);
         else if (reason === 'expired')
-          sayStrip('The subscription has run out. Checkout is not open yet.');
+          sayStrip(offer ? S.EXPIRED(offer) : S.OFFER_NO_PRICE);
         else
-          sayStrip('Sending needs a subscription. Checkout is not open yet.');
+          sayStrip(offer ? S.OFFER(offer) : S.OFFER_NO_PRICE);
       });
     if (r.status === 501){
       sayStrip('Sending is not available yet — the postcard and the approval step are not built.');
@@ -1536,7 +1649,7 @@ $('mail-send').onclick = () => {
 /* --------------------------------------------------------- the download */
 /* The file is not written here any more. Every cell of it — the zips, the
    neighbourhoods, the permit lines, the disclaimer — is read out of the
-   snapshot by /api/export, behind the session. This end sends only what it
+   snapshot by /api/export, behind the right. This end sends only what it
    alone knows: which snapshot, which group, which mode, and which houses were
    picked. The block list is the product, and a page anyone can open must not
    be the thing that hands it over.
@@ -1587,8 +1700,14 @@ $('dl').onclick = () => {
       return r.blob().then(b =>
         dlSave(b, dlName(r.headers.get('Content-Disposition'))));
     if (r.status === 401){
-      setSaveNote('Sign in to download this list. <a href="/app">Sign in</a> '
-                + '— your picks stay on this page.');
+      setSaveNote(S.SIGN_IN_DOWNLOAD);
+      return;
+    }
+    /* The file is behind the same right the sending is. The offer is not
+       repeated here: it is one subscription, it is bought from the strip, and a
+       second counter beside the download would read as a second thing to buy. */
+    if (r.status === 402){
+      setSaveNote(S.DOWNLOAD_NEEDS_SUB);
       return;
     }
     /* the folder this page has been reading was republished under it */

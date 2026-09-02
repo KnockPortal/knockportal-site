@@ -7,6 +7,7 @@ import { readEntitlement } from '@/lib/entitlements'
 import { technicalLine } from '@/lib/ui-error'
 import { SURFACE_CITY, SURFACE_TRADE } from '@/lib/surface'
 import { ANON_COOKIE, ANON_RE, claimAnonMailings } from '@/lib/mailing'
+import { resolveOffer } from '@/lib/billing'
 
 export const runtime = 'nodejs'
 
@@ -25,12 +26,11 @@ function invalid(field: string) {
  * rather than to the answer: the man is standing at the send button, and the
  * drafts he collected before signing in have to be his by then.
  *
- * What is reachable today: 401 and 402. public.entitlements holds zero rows and
- * nothing can write one — checkout arrives with item 14 — so no request from
- * the field reaches the 402/501 boundary from the granting side. The 501 branch
- * is checked by hand, by inserting a row of right through SQL, and it exists
- * because past this gate there is still no postcard, no approval step and no
- * vendor.
+ * What is reachable today: all three. Since item 14 the webhook writes rows of
+ * right, so a paid workspace crosses this gate and lands on the 501 — which
+ * still stands, because past here there is no postcard, no approval step and no
+ * vendor. The 402 no longer merely refuses: it carries the offer, so the wall
+ * says its own price.
  */
 export async function POST(request: Request) {
   try {
@@ -81,8 +81,31 @@ export async function POST(request: Request) {
     // The reason travels as the module returned it — none, status, expired —
     // because the three of them are three different sentences to the man.
     if (!check.granted) {
+      // The offer rides along so the refusal can name its own price. Without
+      // price_id: nothing on the page may pick which price is charged, and the
+      // checkout route resolves it again on its own side.
+      //
+      // A price that could not be read is not a reason to hold the wall shut
+      // differently — the wall already stands. The refusal goes out with a null
+      // offer and the strip says the shorter sentence.
+      let offer: { amount_cents: number; currency: string; interval: string; label: string } | null =
+        null
+      try {
+        const resolved = await resolveOffer(SURFACE_CITY, SURFACE_TRADE)
+        if (resolved) {
+          offer = {
+            amount_cents: resolved.amount_cents,
+            currency: resolved.currency,
+            interval: resolved.interval,
+            label: resolved.label,
+          }
+        }
+      } catch (e) {
+        console.error('[mailing/send] price lookup failed:', technicalLine(e))
+      }
+
       return NextResponse.json(
-        { error: 'subscription_required', reason: check.reason },
+        { error: 'subscription_required', reason: check.reason, offer },
         { status: 402 },
       )
     }

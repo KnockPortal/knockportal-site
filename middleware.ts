@@ -53,7 +53,9 @@ export const config = {
   // on that path.
   //
   // The mailing routes read the session on the server, and without them here an
-  // expiring session is never refreshed on the requests the surface makes.
+  // expiring session is never refreshed on the requests the surface makes. The
+  // billing routes read the session on the server too, so an expiring session
+  // has to be refreshed on them as well.
   matcher: [
     '/app',
     '/app/:path*',
@@ -63,5 +65,7 @@ export const config = {
     '/api/selections/:path*',
     '/api/mailing',
     '/api/mailing/:path*',
+    '/api/billing',
+    '/api/billing/:path*',
   ],
 }

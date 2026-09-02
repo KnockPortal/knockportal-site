@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseSession } from '@/lib/supabase-session'
+import { ensureWorkspace } from '@/lib/workspace'
+import { readEntitlement } from '@/lib/entitlements'
 import { DATA_BASE, SURFACE_CITY, SURFACE_TRADE } from '@/lib/surface'
 
 export const runtime = 'nodejs'
@@ -145,11 +147,14 @@ function toCsv(rows: Cell[][]): string {
 /**
  * Builds the export.
  *
- * The gate is the session and nothing more. The entitlement object exists now —
- * public.entitlements, read through lib/entitlements.ts — but nothing writes it
- * yet: checkout arrives with order item 14, and that same item moves this gate
- * from the session to the entitlement. The check goes in beside this one, ahead
- * of the snapshot read.
+ * The gate is the right, and the session is its precondition: there is no
+ * entitlement to look up without knowing whose workspace to look it up in. Both
+ * stand ahead of the body, and well ahead of the snapshot read — a request that
+ * is not allowed to have this file must not cost the bucket a fetch.
+ *
+ * The refusal carries no offer. The mailing strip already knows how to show one
+ * and how to open checkout, and this route points him at it rather than growing
+ * a second sales counter of its own.
  *
  * What the body may say is deliberately small: which snapshot, which group,
  * which mode, and — for postcards — which addresses he picked. Every other cell
@@ -164,6 +169,32 @@ export async function POST(request: Request) {
 
   if (error || !data.user) {
     return NextResponse.json({ error: 'auth_required' }, { status: 401 })
+  }
+
+  const workspace = await ensureWorkspace(supabase, null)
+  if (!workspace.ok) {
+    console.error('[export] ensure_workspace failed:', workspace.detail)
+    return NextResponse.json({ error: 'workspace_unavailable' }, { status: 503 })
+  }
+
+  // The session client, and never the service-role one: everything this check
+  // can see is what the signed-in man can see. A right that could not be read
+  // is not a right — the failure refuses rather than passes through.
+  const check = await readEntitlement(
+    supabase,
+    workspace.workspace.workspace_id,
+    SURFACE_CITY,
+    SURFACE_TRADE,
+  )
+  if (!check.ok) {
+    console.error('[export] entitlement read failed:', check.detail)
+    return NextResponse.json({ error: 'right_unknown' }, { status: 503 })
+  }
+  if (!check.granted) {
+    return NextResponse.json(
+      { error: 'subscription_required', reason: check.reason },
+      { status: 402 },
+    )
   }
 
   let body: unknown
