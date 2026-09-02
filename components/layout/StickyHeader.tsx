@@ -11,7 +11,6 @@ import { supabaseBrowser } from '@/lib/supabase-browser'
 const NAV_LINKS = [
   { label: 'Home', href: '/' },
   { label: 'About', href: '/about' },
-  { label: 'Contact', href: '/contact' },
 ]
 
 const AUTH_HREF = '/app'

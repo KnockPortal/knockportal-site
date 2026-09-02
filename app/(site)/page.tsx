@@ -71,7 +71,7 @@ const BODY_LINE = 'text-sm leading-relaxed text-hail/80'
 const BLOCKS = [
   {
     heading: 'Where the data comes from',
-    text: "KnockPortal reads the City of San Francisco's public building-permit records and refreshes daily. Every permit shown on the map links to its own record on the city's portal — check any line you like. A house marked open means no qualifying roofing permit was found in eight years of available public records. No permit found does not mean that roofing work was never performed. Results reflect the available public permit history.",
+    text: "KnockPortal reads the City of San Francisco's public building-permit records and republishes them as a dated snapshot — the map says which day the records were pulled. Every permit shown on the map links to its own record on the city's portal — check any line you like. A house marked open means no qualifying roofing permit was found in eight years of available public records. No permit found does not mean that roofing work was never performed. Results reflect the available public permit history.",
     link: null,
   },
   {
@@ -81,13 +81,8 @@ const BLOCKS = [
   },
   {
     heading: 'Who runs this',
-    text: 'KnockPortal is operated by Abalon Construction Management LLC, registered in North Carolina. 4030 Wake Forest Rd, Ste 349, Raleigh, NC 27609.',
-    link: { label: 'About the company', href: '/about' },
-  },
-  {
-    heading: 'Talk to a human',
-    text: 'Questions, corrections, or anything the form on this page does not cover — write to a person.',
-    link: { label: 'Contact', href: '/contact' },
+    text: 'KnockPortal is operated by Abalon Construction Management LLC, registered in North Carolina. 4030 Wake Forest Rd, Ste 349, Raleigh, NC 27609. Questions, corrections, or anything the form on this page does not cover — write to a person.',
+    link: { label: 'About and contact', href: '/about' },
   },
 ] as const
 

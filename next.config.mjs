@@ -29,6 +29,9 @@ const nextConfig = {
       { source: '/request', destination: '/', permanent: true },
       { source: '/how-it-works', destination: '/', permanent: true },
       { source: '/pricing', destination: '/', permanent: true },
+      // The contact page is now a section of /about. The address is indexed, so it
+      // is redirected rather than left to answer 404.
+      { source: '/contact', destination: '/about', permanent: true },
     ]
   },
 }

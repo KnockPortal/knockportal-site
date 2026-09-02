@@ -7,7 +7,7 @@ import { Footer } from '@/components/layout/Footer'
 export const metadata: Metadata = {
   title: 'KnockPortal — where San Francisco roofing permits are clustering',
   description:
-    'KnockPortal reads San Francisco building-permit records daily and shows where roofing work is clustering — the streets being re-roofed right now, and the houses on those blocks that are not.',
+    'KnockPortal reads San Francisco building-permit records and shows where roofing work is clustering — the streets being re-roofed right now, and the houses on those blocks that are not.',
   icons: {
     icon: [
       { url: '/logo/logo-favicon-adaptive.svg', type: 'image/svg+xml' },

@@ -25,7 +25,6 @@ export function Footer() {
             <p className="text-muted font-mono text-xs uppercase tracking-widest mb-4">Company</p>
             <ul className="space-y-2.5 text-sm text-hail/80">
               <li><Link href="/about" className="hover:text-hail transition-colors duration-150">About</Link></li>
-              <li><Link href="/contact" className="hover:text-hail transition-colors duration-150">Contact</Link></li>
             </ul>
           </div>
 
