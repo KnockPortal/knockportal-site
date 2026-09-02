@@ -1523,9 +1523,15 @@ $('mail-send').onclick = () => {
   });
 };
 
-/* The strip is in the markup before any answer is: it says what it holds now,
-   which is nothing, rather than standing empty until the first round trip. */
-renderStrip();
+/* The strip is not drawn here, and nothing else on this level writes into a
+   node the server rendered either. The empty state ships in the markup, so at
+   nought there is nothing for this file to say — and saying it anyway is what
+   took the page down once. This script is blocking and runs before React
+   hydrates: a synchronous write into a served node makes the two trees
+   disagree, React answers a failed hydration by rebuilding the root, and every
+   onclick set above goes with the nodes it was set on — the mailing's buttons,
+   Download and Save selection alike. The strip is written from cartApply() and
+   from nowhere else, and that answer arrives long after hydration is over. */
 
 /* --------------------------------------------------------- the download */
 /* The file is not written here any more. Every cell of it — the zips, the

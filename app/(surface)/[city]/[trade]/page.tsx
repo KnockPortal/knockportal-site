@@ -197,7 +197,18 @@ export default function SurfacePage({
               it is collected group by group, and the city screen is where he
               goes to find the next one. */}
           <div className="strip" id="strip">
-            <div className="strip-sum" id="strip-sum"></div>
+            {/* The empty mailing is stated here and not written in by page.js.
+                page.js runs before React hydrates, so a synchronous write into
+                a node the server rendered makes the two trees disagree — and a
+                failed hydration is answered by rebuilding the root, which
+                throws away every onclick the surface had already set on the
+                buttons. The words are the ones renderStrip() writes at a count
+                of nothing, character for character, so the first answer from
+                the cart has nothing to correct.
+                suppressHydrationWarning because from here on the contents of
+                this node belong to page.js: React must not weigh what the
+                server said against what the count says later. */}
+            <div className="strip-sum" id="strip-sum" suppressHydrationWarning>Nothing in this mailing yet</div>
             <p className="strip-note">Collecting is free. Sending needs a subscription.</p>
             <button className="ghost" id="mail-clear" hidden>
               Clear the mailing

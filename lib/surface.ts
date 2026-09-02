@@ -34,7 +34,7 @@ export const DATA_BASE =
  * A literal, because reading public/ from the filesystem at request time is not
  * something a page should do.
  */
-export const SURFACE_BUILD = '0665b53a8b53'
+export const SURFACE_BUILD = 'd186cdca9bbc'
 
 export type SurfaceVariant = {
   /** Company name for the personal variant; empty string on the public one. */
