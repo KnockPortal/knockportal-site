@@ -69,12 +69,18 @@ async function dispatch(event: Stripe.Event, db: DB) {
       await syncEntitlement((event.data.object as Stripe.Subscription).id, db)
       break
 
-    case 'customer.subscription.deleted':
+    case 'customer.subscription.deleted': {
       // No re-fetch here, unlike everywhere else: the object is gone at Stripe,
       // so the event is the last word there will ever be about it. The term is
       // left as it stands — a canceled row is refused on the status alone, and
-      // the date it ran to is the only record of when it did.
-      await db
+      // the date it ran to is the only record of when it did. The flag goes
+      // back to false because there is no longer a subscription to schedule the
+      // end of.
+      //
+      // The error throws, like the other two writes here: swallowing it would
+      // mark the event processed, Stripe would never retry, and a cancellation
+      // that did not land leaves the right alive until its term runs out.
+      const { error: cancelErr } = await db
         .from('entitlements')
         .update({
           status: 'canceled',
@@ -82,7 +88,12 @@ async function dispatch(event: Stripe.Event, db: DB) {
           updated_at: new Date().toISOString(),
         })
         .eq('stripe_subscription_id', (event.data.object as Stripe.Subscription).id)
+
+      if (cancelErr) {
+        throw new Error('entitlement cancel write failed · ' + cancelErr.message)
+      }
       break
+    }
 
     case 'invoice.payment_failed':
     case 'invoice.payment_succeeded': {
@@ -191,7 +202,7 @@ async function syncEntitlement(stripeSubId: string, db: DB) {
     city: cell.city,
     trade: cell.trade,
     status: sub.status,
-    cancel_at_period_end: sub.cancel_at_period_end,
+    cancel_at_period_end: resolveCancelAtPeriodEnd(sub),
     stripe_subscription_id: stripeSubId,
     updated_at: new Date().toISOString(),
   }
@@ -204,6 +215,30 @@ async function syncEntitlement(stripeSubId: string, db: DB) {
   if (error) {
     throw new Error('entitlement upsert failed · ' + error.message)
   }
+}
+
+// Cancellation at the end of the term is stated by two different fields, and on
+// a live object only the second one is filled. Measured on sub_1UBCQACLmZAjrLym
+// on 2026-09-02, after a cancellation through the hosted portal: status active,
+// cancel_at_period_end false, cancel_at set to the end of the term. So the flag
+// alone reads a cancelled subscription as a renewing one, and the workspace is
+// told it renews — a false sentence about money.
+//
+// The flag is still asked first: it is the truth for objects created before the
+// shape changed and for replayed older events. cancel_at is the fallback, and it
+// is compared against now, because the field carries two meanings at once — a
+// moment ahead is a cancellation scheduled, a moment behind is one that has
+// already happened. The second kind arrives with status canceled, and the status
+// is what should refuse it; calling it "ending at the end of the period" would
+// have the workspace say a subscription that is already gone is still active.
+//
+// The neighbouring field that timestamps the request itself is deliberately not
+// read: it says when he asked for the cancellation, not when the service stops,
+// and on a live subscription it is filled alongside cancel_at.
+function resolveCancelAtPeriodEnd(sub: Stripe.Subscription): boolean {
+  if (sub.cancel_at_period_end === true) return true
+  if (typeof sub.cancel_at === 'number') return sub.cancel_at * 1000 > Date.now()
+  return false
 }
 
 // current_period_end moved off Subscription onto each SubscriptionItem in 2026-06-24.dahlia.

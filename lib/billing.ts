@@ -151,3 +151,19 @@ export function readCellMetadata(
  */
 export const RETURN_TO_RE =
   /^\/[a-z0-9-]{1,40}\/[a-z0-9-]{1,40}(\?[A-Za-z0-9=&_.%-]{0,160})?$/
+
+/**
+ * The page half of a return path, with the query cut off — or null when the
+ * value is not a return path at all.
+ *
+ * It exists so a caller can compare the page against a cell it knows, by
+ * equality. A prefix test cannot do that job: /sf/roofingx starts with
+ * /sf/roofing and is a different address, and the man would come back from a
+ * paid checkout onto a 404. The query is not part of that comparison — ?from=
+ * is how the personal variant is addressed, and it varies by design.
+ */
+export function returnToPath(value: string): string | null {
+  if (typeof value !== 'string' || !RETURN_TO_RE.test(value)) return null
+  const cut = value.indexOf('?')
+  return cut === -1 ? value : value.slice(0, cut)
+}

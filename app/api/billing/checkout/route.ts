@@ -7,7 +7,7 @@ import { readEntitlement } from '@/lib/entitlements'
 import { technicalLine } from '@/lib/ui-error'
 import { SURFACE_CITY, SURFACE_TRADE } from '@/lib/surface'
 import { ANON_COOKIE, ANON_RE, claimAnonMailings } from '@/lib/mailing'
-import { RETURN_TO_RE, SITE_ORIGIN, getStripe, resolveOffer } from '@/lib/billing'
+import { SITE_ORIGIN, getStripe, resolveOffer, returnToPath } from '@/lib/billing'
 
 export const runtime = 'nodejs'
 
@@ -46,15 +46,13 @@ export async function POST(request: Request) {
     if (input.city !== SURFACE_CITY) return invalid('city')
     if (input.trade !== SURFACE_TRADE) return invalid('trade')
 
-    // Where Stripe hands him back. It has to be the surface he left, so it is
-    // checked against the shape of a surface address and then against this
-    // cell's own prefix: the query may vary — ?from= carries the personal
-    // variant — the page may not.
+    // Where Stripe hands him back. It has to be the surface he left, so the
+    // page is taken off the value and compared with this cell by equality: the
+    // query may vary — ?from= carries the personal variant — the page may not.
     const returnTo = input.return_to
     if (
       typeof returnTo !== 'string' ||
-      !RETURN_TO_RE.test(returnTo) ||
-      !returnTo.startsWith(`/${SURFACE_CITY}/${SURFACE_TRADE}`)
+      returnToPath(returnTo) !== `/${SURFACE_CITY}/${SURFACE_TRADE}`
     ) {
       return invalid('return_to')
     }
