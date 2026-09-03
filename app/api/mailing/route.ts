@@ -16,6 +16,7 @@ import {
   MAX_STAMP_LENGTH,
   MAX_TEXT_LENGTH,
   STAMP_RE,
+  type MailingAddressInput,
   claimAnonMailings,
   createMailing,
   emptyCart,
@@ -100,7 +101,67 @@ async function resolveOwner(): Promise<Resolved> {
   return { ok: true, owner: { kind: 'workspace', workspaceId } }
 }
 
-function readAddresses(value: unknown): string[] | null {
+/**
+ * Five digits and no more. mailing_addresses.zip carries the same check, so the
+ * route refuses before the database does; the profile's own ZIP_RE is a
+ * different rule for a different column — a return address may be written
+ * five-and-four, and a delivery point the snapshot handed us may not.
+ */
+const ZIP5_RE = /^\d{5}$/
+
+/**
+ * One entry of the addresses array, in either of the two shapes it arrives in.
+ *
+ * A bare string is the older contract and it is still accepted: page.js is a
+ * static asset, and a browser holding the previous copy of it goes on sending
+ * strings for as long as its cache says so. Such a row is added with no point
+ * and no zip, which is exactly what it knows.
+ *
+ * The object form carries what the client was already holding. Coordinates come
+ * as a pair or not at all — one of the two is not half a point, it is a point
+ * nobody can place — and every refusal below is a malformed request rather than
+ * a field quietly dropped: an address stored without the coordinates the caller
+ * meant to send is an address the postcard cannot be counted against, and
+ * nothing later would say why.
+ */
+function readAddressEntry(entry: unknown): MailingAddressInput | null {
+  if (typeof entry === 'string') {
+    if (entry === '' || entry.length > MAX_ADDRESS_LENGTH) return null
+    return { a: entry, zip: null, lat: null, lon: null }
+  }
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+  const row = entry as Record<string, unknown>
+
+  const a = row.a
+  if (typeof a !== 'string' || a === '' || a.length > MAX_ADDRESS_LENGTH) return null
+
+  // Missing, null and empty are one state and it is null: the snapshot spells a
+  // neighbour with no zip as an empty string.
+  let zip: string | null = null
+  if (row.zip !== undefined && row.zip !== null && row.zip !== '') {
+    if (typeof row.zip !== 'string' || !ZIP5_RE.test(row.zip)) return null
+    zip = row.zip
+  }
+
+  const latAbsent = row.lat === undefined || row.lat === null
+  const lonAbsent = row.lon === undefined || row.lon === null
+  if (latAbsent !== lonAbsent) return null
+
+  let lat: number | null = null
+  let lon: number | null = null
+  if (!latAbsent) {
+    if (typeof row.lat !== 'number' || !Number.isFinite(row.lat)) return null
+    if (typeof row.lon !== 'number' || !Number.isFinite(row.lon)) return null
+    if (row.lat < -90 || row.lat > 90) return null
+    if (row.lon < -180 || row.lon > 180) return null
+    lat = row.lat
+    lon = row.lon
+  }
+
+  return { a, zip, lat, lon }
+}
+
+function readAddresses(value: unknown): MailingAddressInput[] | null {
   if (
     !Array.isArray(value) ||
     value.length < 1 ||
@@ -108,12 +169,13 @@ function readAddresses(value: unknown): string[] | null {
   ) {
     return null
   }
+  const list: MailingAddressInput[] = []
   for (const entry of value) {
-    if (typeof entry !== 'string' || entry === '' || entry.length > MAX_ADDRESS_LENGTH) {
-      return null
-    }
+    const read = readAddressEntry(entry)
+    if (!read) return null
+    list.push(read)
   }
-  return value as string[]
+  return list
 }
 
 // The limit comes in as an argument because the two texts do not share one:
@@ -124,14 +186,33 @@ function readOptionalText(value: unknown, max: number): string | null | undefine
   return value
 }
 
-/** The draft moved, so the row that carries it says when. */
-async function touchMailing(
+/**
+ * The draft moved, so the row that carries it says when — and stops saying it
+ * was approved.
+ *
+ * An approval is a statement about one particular set of addresses: this many
+ * doors, at this price, against that snapshot. Add a door or take one away and
+ * the statement is no longer about what is in the mailing, so it is withdrawn
+ * here rather than left standing over a list it never described. The four
+ * columns are cleared together because they mean nothing apart — a count with
+ * no date beside it is not a weaker approval, it is a broken row.
+ *
+ * Called from all three operations. Withdrawing on a remove and a clear matters
+ * as much as on an add: a mailing shrinks as easily as it grows.
+ */
+async function markMailingChanged(
   admin: ReturnType<typeof supabaseAdmin>,
   mailingId: string,
 ): Promise<void> {
   const { error } = await admin
     .from('mailings')
-    .update({ updated_at: new Date().toISOString() })
+    .update({
+      updated_at: new Date().toISOString(),
+      approved_at: null,
+      approved_count: null,
+      approved_price_cents: null,
+      approved_snapshot_stamp: null,
+    })
     .eq('id', mailingId)
   if (error) throw new Error('mailing touch failed · ' + technicalLine(error))
 }
@@ -195,7 +276,7 @@ export async function POST(request: Request) {
 
     // Every field the operation carries is read before the operation runs: a
     // malformed request is a 400 whether or not there is a draft to run it on.
-    let addresses: string[] = []
+    let addresses: MailingAddressInput[] = []
     let stamp = ''
     let nhood: string | null = null
     let label: string | null = null
@@ -239,8 +320,15 @@ export async function POST(request: Request) {
       }
 
       // Counted on the distinct addresses of the request, because the primary
-      // key is what the insert lands on: the same address twice is one row.
-      const distinct = Array.from(new Set(addresses))
+      // key is what the insert lands on: the same address twice is one row. The
+      // first entry of a repeated address is the one kept — the second carries
+      // the same key and would land on the same row, so there is nothing to
+      // choose between them and no reason to let the later one win.
+      const byAddress = new Map<string, MailingAddressInput>()
+      for (const entry of addresses) {
+        if (!byAddress.has(entry.a)) byAddress.set(entry.a, entry)
+      }
+      const distinct = Array.from(byAddress.values())
       if (count + distinct.length > MAX_MAILING_ADDRESSES) {
         return noStore(
           NextResponse.json(
@@ -261,9 +349,12 @@ export async function POST(request: Request) {
       if (!mailingId) mailingId = await createMailing(admin, owner, SURFACE_CITY, SURFACE_TRADE)
 
       const { error: insertError } = await admin.from('mailing_addresses').upsert(
-        distinct.map((address) => ({
+        distinct.map((entry) => ({
           mailing_id: mailingId,
-          address,
+          address: entry.a,
+          zip: entry.zip,
+          lat: entry.lat,
+          lon: entry.lon,
           snapshot_stamp: stamp,
           nhood,
           label,
@@ -273,7 +364,7 @@ export async function POST(request: Request) {
       if (insertError) {
         throw new Error('mailing addresses insert failed · ' + technicalLine(insertError))
       }
-      await touchMailing(admin, mailingId)
+      await markMailingChanged(admin, mailingId)
 
       const response = cart200(await loadCart(admin, mailingId))
       if (mintedAnonId) {
@@ -299,7 +390,7 @@ export async function POST(request: Request) {
         .from('mailing_addresses')
         .delete()
         .eq('mailing_id', mailingId)
-        .in('address', Array.from(new Set(addresses)))
+        .in('address', Array.from(new Set(addresses.map((entry) => entry.a))))
       if (error) throw new Error('mailing addresses delete failed · ' + technicalLine(error))
     } else {
       // The draft row itself stays: it is the cell he is collecting in, and he
@@ -311,7 +402,7 @@ export async function POST(request: Request) {
       if (error) throw new Error('mailing clear failed · ' + technicalLine(error))
     }
 
-    await touchMailing(admin, mailingId)
+    await markMailingChanged(admin, mailingId)
     return cart200(await loadCart(admin, mailingId))
   } catch (e) {
     return failed('POST', e)

@@ -1549,6 +1549,16 @@ $('tomail').onclick = () => {
   if (!CUR || MODE === 'walk' || !PICKED.size) return;
   const btn = $('tomail');
   const sel = selectionBody();
+  /* The same picks as sel.addresses, in the same order, but each door with the
+     zip and the point this tab is holding for it. Nothing else knows them: the
+     postcard is counted around a point, and the row in the mailing is the only
+     copy that outlives this page. A neighbour missing either coordinate goes
+     over with neither — half a point places nothing. */
+  const picks = CUR.neighbours.filter(n => PICKED.has(n.a)).map(n => {
+    const placed = typeof n.lat === 'number' && typeof n.lon === 'number';
+    return {a: n.a, zip: n.zip || null,
+            lat: placed ? n.lat : null, lon: placed ? n.lon : null};
+  });
   /* what actually landed is the difference the cart shows: an address already
      in the mailing is not added a second time */
   const before = CART.size;
@@ -1558,7 +1568,7 @@ $('tomail').onclick = () => {
   resetClearConfirm();
   cartPost({
     city: sel.city, trade: sel.trade, op: 'add',
-    addresses: sel.addresses, snapshot_stamp: sel.snapshot_stamp,
+    addresses: picks, snapshot_stamp: sel.snapshot_stamp,
     nhood: sel.nhood, label: sel.label
   }).then(() => {
     const added = CART.size - before;
@@ -1585,11 +1595,12 @@ $('mail-clear').onclick = () => {
     .catch(cartFailed);
 };
 
-/* The gate, and the counter beside it. Nothing is sent from here yet and the
-   button says as much through whatever the server answers — but a refusal for
-   want of a subscription now carries the price and a way to pay it. The mailing
-   stays where it is in every case, including the one where he leaves for
-   Stripe: it is held by the server, not by this tab. */
+/* The gate, and the counter beside it. Nothing is sent from here: a crossing
+   is answered with the address of the approval screen and this tab goes there,
+   which is why the path is not written down in this file — the server owns it.
+   A refusal for want of a subscription carries the price and a way to pay it.
+   The mailing stays where it is in every case, including the one where he
+   leaves for Stripe: it is held by the server, not by this tab. */
 $('mail-send').onclick = () => {
   if (!CART.size) return;
   const btn = $('mail-send');
@@ -1619,10 +1630,8 @@ $('mail-send').onclick = () => {
         else
           sayStrip(offer ? S.OFFER(offer) : S.OFFER_NO_PRICE);
       });
-    if (r.status === 501){
-      sayStrip('Sending is not available yet — the postcard and the approval step are not built.');
-      return;
-    }
+    if (r.status === 200)
+      return r.json().then(j => { location.assign(j.url); });
     if (r.status === 503){
       sayStrip('We could not check the subscription. Try again in a moment.');
       return;

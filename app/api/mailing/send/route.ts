@@ -18,7 +18,7 @@ function invalid(field: string) {
 /**
  * The gate. It answers one question — who is allowed to send — and it does not
  * touch the other one: there is no payload contract here on purpose, because
- * there is nothing yet to send. That is what the 501 says.
+ * nothing is sent from this route.
  *
  * Nothing in this handler writes. It reads the right and hands back a status.
  * The one thing it does that leaves a mark is claiming the guest's drafts for
@@ -26,11 +26,14 @@ function invalid(field: string) {
  * rather than to the answer: the man is standing at the send button, and the
  * drafts he collected before signing in have to be his by then.
  *
- * What is reachable today: all three. Since item 14 the webhook writes rows of
- * right, so a paid workspace crosses this gate and lands on the 501 — which
- * still stands, because past here there is no postcard, no approval step and no
- * vendor. The 402 no longer merely refuses: it carries the offer, so the wall
- * says its own price.
+ * What a crossing answers changed with the approval screen. It used to be a
+ * 501, because past the gate there was no postcard and nothing to approve;
+ * now there is one, and the answer is where to find it. The route hands back
+ * the address rather than letting the surface script hold a copy of it: one
+ * side owns that path, and it is the side that knows the screen exists.
+ *
+ * The 402 does not merely refuse: it carries the offer, so the wall says its
+ * own price.
  */
 export async function POST(request: Request) {
   try {
@@ -110,7 +113,16 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({ error: 'not_available_yet' }, { status: 501 })
+    // Built from the constants and not written out: the screen is bound to the
+    // one filled cell of the grid, and the two names of that cell live in
+    // lib/surface.ts.
+    return NextResponse.json(
+      {
+        ok: true,
+        url: `/app/mailing?city=${SURFACE_CITY}&trade=${SURFACE_TRADE}`,
+      },
+      { status: 200 },
+    )
   } catch (e) {
     console.error('[mailing/send] failed:', technicalLine(e))
     return NextResponse.json({ error: 'send_unavailable' }, { status: 500 })

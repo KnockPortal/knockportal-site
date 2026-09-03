@@ -64,6 +64,23 @@ export type MailingOwner =
   | { kind: 'anon'; anonId: string }
   | { kind: 'workspace'; workspaceId: string }
 
+/**
+ * One address as it arrives on an add.
+ *
+ * The address is the whole of the key — the primary key of mailing_addresses is
+ * (mailing_id, address) and nothing here changes that. The other three ride
+ * along because the client is holding them at the moment of the add and nowhere
+ * else does: the postcard is counted against a point, and a row with no point
+ * cannot be counted against anything. All three are nullable end to end, and a
+ * row that arrives without them is a row that is added anyway.
+ */
+export type MailingAddressInput = {
+  a: string
+  zip: string | null
+  lat: number | null
+  lon: number | null
+}
+
 /** What both routes answer with: the whole cart, counted by the server. */
 export type MailingCart = {
   mailing_id: string | null
@@ -204,9 +221,13 @@ export async function claimAnonMailings(
       continue
     }
 
+    // Every column the row carries, and the point among them. The upsert below
+    // spreads whatever is read here, so a column left out of this list is a
+    // column emptied by the merge — and emptied for good: ignoreDuplicates
+    // means the next add of the same address does not come back to fix it.
     const { data: rows, error: readError } = await admin
       .from('mailing_addresses')
-      .select('address, snapshot_stamp, nhood, label, added_at')
+      .select('address, zip, lat, lon, snapshot_stamp, nhood, label, added_at')
       .eq('mailing_id', draft.id)
 
     if (readError) throw new Error('mailing merge read failed · ' + technicalLine(readError))

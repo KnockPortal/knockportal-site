@@ -5,6 +5,15 @@ export const SURFACE_CITY = 'sf'
 export const SURFACE_TRADE = 'roofing'
 
 /**
+ * The city line under a delivery address on a postcard, as the postal service
+ * writes it. It is a constant and not a literal in the component because it is
+ * a fact about the one filled cell of the grid, the same as the two names above
+ * — every address the snapshot hands us is in this city, and the day a second
+ * city is filled this is one of the places that has to change.
+ */
+export const SURFACE_MAIL_CITY_LINE = 'SAN FRANCISCO, CA'
+
+/**
  * Public by construction: this token ships inside the source of every page that
  * draws the map, so anyone who opens the surface can read it. It is scoped and
  * URL-restricted on the Mapbox side, which is where the restriction belongs.
@@ -34,7 +43,7 @@ export const DATA_BASE =
  * A literal, because reading public/ from the filesystem at request time is not
  * something a page should do.
  */
-export const SURFACE_BUILD = '97f87c8fd1fb'
+export const SURFACE_BUILD = 'fe456c8068cb'
 
 export type SurfaceVariant = {
   /** Company name for the personal variant; empty string on the public one. */
