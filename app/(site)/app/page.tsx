@@ -4,6 +4,7 @@ import { ensureWorkspace } from '@/lib/workspace'
 import { GRANTING_STATUSES } from '@/lib/entitlements'
 import { RETURN_TO_RE, cellLabel } from '@/lib/billing'
 import { SAVED_SELECTION_COLUMNS, type SavedSelectionRow } from '@/lib/saved-selections'
+import { PROFILE_COLUMNS, type PostcardProfileRow } from '@/lib/postcard-profile'
 import { describeError, secondaryClass, type UiError } from '@/lib/ui-error'
 import SignInPanel from '@/components/app/SignInPanel'
 import SignOutButton from '@/components/app/SignOutButton'
@@ -12,6 +13,7 @@ import PendingSelection from '@/components/app/PendingSelection'
 import SubscriptionSection, {
   type SubscriptionLine,
 } from '@/components/app/SubscriptionSection'
+import PostcardProfileSection from '@/components/app/PostcardProfileSection'
 
 // The page reads the session out of the request cookies, so there is nothing
 // here to prerender: a build-time copy would show one user's workspace to
@@ -192,6 +194,26 @@ export default async function AppPage({
   const rightsUiError = rightsError ? describeError(rightsError) : null
   const subscriptionLines = (rightRows ?? []).map(subscriptionLine)
 
+  // Under the session again, for the same reason: the SELECT policy on
+  // postcard_profiles is by membership, and it is the only fence this row has.
+  //
+  // The workspace_id in the filter names which row to fetch and decides nothing
+  // about who may have it — that was settled by the policy before this query
+  // ran. It is here because a person can belong to more than one workspace, and
+  // the profile shown has to be the profile the save route writes: that route
+  // takes its workspace from ensure_workspace, so this read takes it from the
+  // same answer, already in hand from the call above.
+  //
+  // With the key in the filter maybeSingle is exact: one row or none, and none
+  // is the ordinary state of a workspace whose postcard has not been set up.
+  const { data: profileRow, error: profileError } = await supabase
+    .from('postcard_profiles')
+    .select(PROFILE_COLUMNS)
+    .eq('workspace_id', workspace.workspace.workspace_id)
+    .maybeSingle<PostcardProfileRow>()
+
+  const profileUiError = profileError ? describeError(profileError) : null
+
   return (
     <div className="mx-auto max-w-5xl px-5 py-16">
       <h1 className="font-display text-2xl font-semibold tracking-tight text-hail">
@@ -220,6 +242,17 @@ export default async function AppPage({
           </section>
         ) : (
           <SubscriptionSection rows={subscriptionLines} />
+        )}
+
+        {profileUiError ? (
+          <section className="space-y-4">
+            <h2 className="font-display text-lg font-semibold text-hail">
+              Postcard details
+            </h2>
+            <ErrorBlock error={profileUiError} />
+          </section>
+        ) : (
+          <PostcardProfileSection row={profileRow ?? null} />
         )}
 
         <section className="rounded border border-hairline bg-slate px-4 py-3">
