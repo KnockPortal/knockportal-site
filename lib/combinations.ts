@@ -8,12 +8,15 @@ import { SURFACE_CITY, SURFACE_TRADE } from '@/lib/surface'
  * the `live` flag there is the Stripe webhook's configuration (which vertical
  * may be checked out) and says nothing about whether a surface is filled.
  * Filledness has exactly one source — the SURFACE_CITY / SURFACE_TRADE pair.
+ * Every trade also carries the address of that cell's surface, whether or not
+ * the cell is filled.
  */
 
 export type CombinationTrade = {
   slug: string
   label: string
   filled: boolean
+  href: string
 }
 
 export type CombinationCity = {
@@ -38,11 +41,15 @@ const CITIES: { slug: string; label: string }[] = [
 export const SURFACE_HREF = `/${SURFACE_CITY}/${SURFACE_TRADE}`
 
 export const COMBINATIONS: CombinationCity[] = CITIES.map((city) => {
-  const trades = TRADE_CATEGORIES.map(({ slug, label }) => ({
-    slug,
-    label,
-    filled: city.slug === SURFACE_CITY && slug === SURFACE_TRADE,
-  }))
+  const trades = TRADE_CATEGORIES.map(({ slug, label }) => {
+    const href = `/${city.slug}/${slug}`
+    return {
+      slug,
+      label,
+      filled: city.slug === SURFACE_CITY && slug === SURFACE_TRADE,
+      href,
+    }
+  })
   return {
     slug: city.slug,
     label: city.label,
