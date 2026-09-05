@@ -15,14 +15,20 @@
      city      the whole of San Francisco. Map takes the full width, the panel
                and the group controls are gone — there is no group picked yet.
      cluster   the composition above: map + panel, walk or postcards.
+     area      the same composition as postcards, with the group select and the
+               mode tabs replaced by the two controls the manual area has: the
+               reach, and the reset. No group, no permits, no download.
 
-   Under both screens stands the strip: the mailing is collected group by group
-   and it belongs to neither, so nothing that hides the panel may touch it.
+   Under all three screens stands the strip: the mailing is collected group by
+   group and belongs to none of them, so nothing that hides the panel may touch
+   it.
 
    Hooks page.js depends on (ids + emitted classes):
    #map #back #pick #tab-walk #tab-mail #pane #count #clear #dl #tomail
    #strip #strip-sum #strip-say #mail-clear #mail-send
    #dateline #lede-city #lede-cluster #notice #provenance #staleness #zoomnote
+   #area-go #lede-area #area-tools #area-r #area-r-say #area-reset
+   #legend-area #provenance-area
    .yrs .win .rsince   (runtime text slots)
    .grp .st .row .row.pick .row.on .row.inmail .z .hint
    ========================================================================= */
@@ -106,13 +112,18 @@ h1 em{font-style:normal;color:var(--orange)}
   border-top:1px solid var(--line);border-bottom:1px solid var(--line);
   backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
 }
-.back{
+.back,.areago{
   background:none;border:1px solid var(--line);color:var(--paper);border-radius:8px;
   padding:12px 15px;font:600 13px/1 var(--cond);letter-spacing:.08em;text-transform:uppercase;
   cursor:pointer;white-space:nowrap;
   transition:background .15s ease,border-color .15s ease;
 }
-.back:hover{border-color:#4A5D70;background:rgba(35,49,64,.6)}
+.back:hover,.areago:hover{border-color:#4A5D70;background:rgba(35,49,64,.6)}
+/* The door to the manual area stands in the header, under the lede, and only on
+   the screen where the offer makes sense: the city one, where the alternative —
+   the group select — is the next thing he sees. */
+.areago{margin-top:14px}
+body:not([data-screen="city"]) .areago{display:none}
 .field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .field-label{font:600 11px/1 var(--cond);letter-spacing:.18em;text-transform:uppercase;color:var(--mute)}
 select#pick{
@@ -143,6 +154,18 @@ select#pick option{font:15px Barlow;background:var(--slate);color:var(--paper)}
 }
 .tab[aria-selected=true] .tab-s{color:var(--mute)}
 
+/* ------------------------------------------------------------ area tools */
+/* The reach and the reset, standing where the select and the tabs stand on the
+   other screens. Hidden until the body says which screen this is — page.js
+   writes that attribute, and before it has, nothing about the area is true. */
+.area-tools{display:flex;gap:12px;align-items:end}
+body:not([data-screen="area"]) #area-tools{display:none}
+.area-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+#area-r{accent-color:var(--orange);width:min(320px, 100%)}
+/* the same quiet gloss the postcard count carries beside its own field */
+.area-r-say{font-size:12.5px;color:var(--mute)}
+#area-r:disabled,#area-reset:disabled{opacity:.5;cursor:default}
+
 /* ------------------------------------------------------------------ stage */
 .stage{
   display:grid;grid-template-columns:minmax(0,1fr) var(--panel-w,620px);
@@ -167,6 +190,34 @@ body[data-screen="city"] #legend-cluster{display:none}
 body[data-screen="city"] .note{display:none}
 body[data-screen="cluster"] #lede-city{display:none}
 body[data-screen="cluster"] #legend-city{display:none}
+
+/* Area: the postcards composition without a group behind it. The panel and the
+   two columns are the default, so only what differs is written here — the group
+   select and the mode tabs go, the area's own controls come, and the download
+   and the save go with the group they belonged to.
+   The two ledes and the two keys of the other screens are hidden as a family
+   rather than one by one: this screen has one of each of its own, and it is the
+   only thing that stays. */
+body[data-screen="area"] .lede:not(#lede-area){display:none}
+body:not([data-screen="area"]) #lede-area{display:none}
+body[data-screen="area"] .legend:not(#legend-area){display:none}
+body:not([data-screen="area"]) #legend-area{display:none}
+body[data-screen="area"] .field{display:none}
+body[data-screen="area"] .tabs{display:none}
+body[data-screen="area"] .controls{grid-template-columns:auto 1fr}
+/* the satellite is the work surface here, as it is for postcards */
+body[data-screen="area"] .stage{--panel-w:360px}
+/* Download is bound to a group and a snapshot, and Save selection stores the
+   centre of a group so it can be found again — neither has anything to say
+   about an area, so neither is offered. */
+body[data-screen="area"] #save,
+body[data-screen="area"] #dl{display:none}
+/* "a blue house is…" describes a group's map, and this screen draws no permits
+   at all; its own word about what it does and does not know is in the lede */
+body[data-screen="area"] .note{display:none}
+/* the address layer is published on its own clock and answers for its own age */
+body:not([data-screen="area"]) #provenance-area{display:none}
+body[data-screen="area"] #provenance{display:none}
 
 .maparea{position:relative;min-width:0;background:var(--well)}
 #map{position:absolute;inset:0}
@@ -250,6 +301,12 @@ a.mapboxgl-ctrl-logo{margin:0;height:var(--logo-h)}
 .lg-box{
   width:15px;height:10px;border-radius:2px;
   background:rgba(255,107,26,.16);border:1px solid #FF9B57;
+}
+/* the area screen: the same orange outline as a group's box, drawn round —
+   because what he drew is a reach from a point, not a rectangle over a block */
+.legend i.lg-area{
+  width:12px;height:12px;border-radius:50%;
+  background:rgba(255,107,26,.16);border:1px solid #FF9B57;box-shadow:none;
 }
 /* the two history steps are drawn as crosses on the map, so the legend shows a
    cross too — a dot here would promise a marker the map never draws */
@@ -421,10 +478,18 @@ button.ghost:hover{border-color:#4A5D70}
   .dateline{font-size:11.5px;letter-spacing:.1em}
   .lede{font-size:14.5px}
   .controls{position:static;grid-template-columns:1fr;gap:10px;padding:12px 18px;align-items:stretch}
+  /* the one-column stack is the phone's answer on every screen, and the area's
+     two-column desktop rule is more specific than the line above */
+  body[data-screen="area"] .controls{grid-template-columns:1fr}
   .screen{display:block;height:auto;min-height:0}
   .tabs{width:100%}
   .tab{flex:1;min-width:0}
   .tab-s{font-size:12px}
+  /* a slider is worked with a thumb here: it takes the whole width, and the
+     reset drops under it rather than beside it */
+  .area-tools{flex-direction:column;align-items:stretch;width:100%}
+  #area-r{width:100%}
+  .areago{width:100%;margin-top:12px}
 
   .stage{display:block;height:auto;border-bottom:0}
   /* the cluster screen keeps 46vh: the address list starts right under the map
@@ -448,6 +513,7 @@ button.ghost:hover{border-color:#4A5D70}
   .legend{display:none}
   body[data-legend="open"][data-screen="city"] #legend-city{display:flex}
   body[data-legend="open"][data-screen="cluster"] #legend-cluster{display:flex}
+  body[data-legend="open"][data-screen="area"] #legend-area{display:flex}
   .legend-toggle{
     display:inline-flex;align-items:center;gap:7px;
     pointer-events:auto;                       /* the one thing that takes taps */
@@ -502,7 +568,9 @@ button.ghost:hover{border-color:#4A5D70}
 /* ------------------------------------------------------------------ print */
 @media print{
   body{background:#fff;color:#000;font-size:12.5px}
-  .controls,.maparea,.foot,.wordmark,.lede,.notice{display:none}
+  /* #area-tools sits inside .controls and #area-go in the header; neither is a
+     thing that can be pressed on paper */
+  .controls,#area-tools,#area-go,.maparea,.foot,.wordmark,.lede,.notice{display:none}
   .top{padding:0 0 10px}
   .built,.dateline{color:#000}
   h1{font-size:26pt}

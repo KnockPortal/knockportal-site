@@ -31,6 +31,16 @@ export const DATA_BASE =
   'https://hxvxklqagzqxlfjfxnno.supabase.co/storage/v1/object/public/data/'
 
 /**
+ * The city's address list, in the same bucket as the permit snapshots but
+ * under a pointer and a stamp of its own — it is published by another pipeline
+ * and on another clock, so it may be absent, newer or older than the snapshot
+ * beside it. The city segment is the shape of the grid, city × trade, and not
+ * a claim that more than one cell is filled: today sf is the only address list
+ * published, exactly as sf × roofing is the only surface.
+ */
+export const ADDR_BASE = DATA_BASE + 'addr/' + SURFACE_CITY + '/'
+
+/**
  * Cache-busting suffix for page.js and page.css. First 12 characters of the
  * sha256 of the two files concatenated in that order. Both are served as static
  * assets, byte for byte, so nothing derives this at build time: either file may
@@ -43,7 +53,7 @@ export const DATA_BASE =
  * A literal, because reading public/ from the filesystem at request time is not
  * something a page should do.
  */
-export const SURFACE_BUILD = 'a66b1fd074aa'
+export const SURFACE_BUILD = 'edababdc2f7b'
 
 export type SurfaceVariant = {
   /** Company name for the personal variant; empty string on the public one. */

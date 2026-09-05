@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import type { Metadata, Viewport } from 'next'
 import {
+  ADDR_BASE,
   DATA_BASE,
   MAPBOX_TOKEN,
   SURFACE_BUILD,
@@ -51,12 +52,15 @@ function configScript(company: string, slug: string) {
    and that emptiness is what page.js reads to tell it from a demo.
    DATA_BASE holds no snapshot: the page asks latest.json which one is current,
    so a fresh publish reaches every page already in the field without a rebuild.
+   ADDR_BASE is the same arrangement for the city's address list, which is
+   published by another pipeline and carries a pointer and a stamp of its own.
    CITY and TRADE are the combination this page was rendered for; page.js sends
    them back with a saved selection rather than keeping a copy of its own. */
 const MAPBOX_TOKEN = ${js(MAPBOX_TOKEN)};
 const COMPANY      = ${js(company)};
 const SLUG         = ${js(slug)};
 const DATA_BASE    = ${js(DATA_BASE)};
+const ADDR_BASE    = ${js(ADDR_BASE)};
 const CITY         = ${js(SURFACE_CITY)};
 const TRADE        = ${js(SURFACE_TRADE)};
 `
@@ -101,7 +105,22 @@ export default function SurfacePage({
             {/* every word of both ledes is written by page.js from the data it drew */}
             <p className="lede" id="lede-city"></p>
             <p className="lede" id="lede-cluster"></p>
+            {/* The third screen's lede is the one exception: it says nothing
+                about the snapshot, so there is nothing in it for page.js to
+                count — it ships written and stays that way. */}
+            <p className="lede" id="lede-area">
+              Pick your own area. Tap the map to set the centre, set the reach,
+              and every address inside goes into the mailing. This mode reads
+              the city&apos;s address list only — no permit history is applied
+              here yet.
+            </p>
             <p className="notice" id="notice" hidden></p>
+            {/* The door to the manual area, standing on the city screen beside
+                the group select below it: the two are the same choice made two
+                ways — take the group the data proposes, or draw your own. */}
+            <button className="areago" id="area-go" type="button">
+              Pick your own area
+            </button>
           </header>
 
           <div className="controls">
@@ -126,6 +145,34 @@ export default function SurfacePage({
                 <span className="tab-s">pick roofs off the satellite</span>
               </button>
             </div>
+            {/* The area's own two controls, standing where the group select and
+                the mode tabs stand on the other screens. The limits of the
+                reach are written here and nowhere else: page.js reads min, max,
+                step and value off the element, so moving them is one edit in
+                this file. 500 ft is around two blocks of SF — a starting point,
+                not a measurement. The foot label ships written for the same
+                reason the empty mailing does: page.js runs before React
+                hydrates, and a synchronous write into a served node makes the
+                two trees disagree. */}
+            <div className="area-tools" id="area-tools">
+              <label className="area-field" htmlFor="area-r">
+                <span className="field-label">Reach</span>
+                <input
+                  id="area-r"
+                  type="range"
+                  min="200"
+                  max="2000"
+                  step="50"
+                  defaultValue="500"
+                />
+                <span className="area-r-say" id="area-r-say">
+                  500 ft
+                </span>
+              </label>
+              <button className="ghost" id="area-reset" type="button">
+                Start over
+              </button>
+            </div>
           </div>
 
           <div className="stage">
@@ -147,6 +194,12 @@ export default function SurfacePage({
                   <span><i className="lg-hist"></i>in your history: mailed, walked, or excluded. Not proposed again; you can still pick it.</span>
                   <span><i className="lg-x lg-recent"></i>reroofed since <span className="rsince"></span></span>
                   <span><i className="lg-x lg-done"></i>reroofed earlier, within <span className="yrs"></span> years</span>
+                </div>
+                <div className="legend" id="legend-area">
+                  <span><i className="lg-open"></i>an address on the city list</span>
+                  <span><i className="lg-sel"></i>picked for this mailing</span>
+                  <span><i className="lg-hist"></i>in your history: mailed, walked, or excluded. Not proposed again; you can still pick it.</span>
+                  <span><i className="lg-area"></i>your area — tap the map to move it</span>
                 </div>
                 <button
                   className="legend-toggle"
@@ -239,13 +292,17 @@ export default function SurfacePage({
             </p>
           ) : null}
           <p className="provenance" id="provenance"></p>
+          {/* The address layer is published on its own clock, so it answers for
+              its own age. Hidden until page.js has read the index and knows
+              which day to name. */}
+          <p className="provenance" id="provenance-area" hidden></p>
           <p className="staleness" id="staleness" hidden></p>
         </footer>
       </div>
 
       {/* Load order, bottom up: the markup above is already in the document,
           page.css is applied from the head, mapbox-gl.js defines mapboxgl, the
-          inline block declares the six constants — and only then page.js runs.
+          inline block declares the seven constants — and only then page.js runs.
           page.js has no readiness check of its own: it expects a finished DOM,
           which is exactly what a plain blocking script at the end of the body
           gets. Nothing here may be deferred, bundled or moved. */}

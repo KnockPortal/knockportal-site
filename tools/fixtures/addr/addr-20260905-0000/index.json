@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "stamp": "addr-20260905-0000",
+    "generated": "2026-09-05 00:00 UTC",
+    "addresses_total": 5400,
+    "files": 3
+  },
+  "files": [
+    {
+      "nhood": "Inner Sunset",
+      "file": "inner-sunset.json",
+      "count": 1800,
+      "bbox": [
+        -122.472017,
+        37.755988,
+        -122.465848,
+        37.766719
+      ]
+    },
+    {
+      "nhood": "Cole Valley",
+      "file": "cole-valley.json",
+      "count": 1800,
+      "bbox": [
+        -122.452013,
+        37.763987,
+        -122.438443,
+        37.768864
+      ]
+    },
+    {
+      "nhood": "Noe Valley",
+      "file": "noe-valley.json",
+      "count": 1800,
+      "bbox": [
+        -122.433015,
+        37.747987,
+        -122.419442,
+        37.752864
+      ]
+    }
+  ]
+}

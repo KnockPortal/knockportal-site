@@ -1,4 +1,4 @@
-/* KnockPortal — San Francisco roofing permits: two screens, one document.
+/* KnockPortal — San Francisco roofing permits: three screens, one document.
    ============================================================================
    DO NOT EDIT for design work. Everything visual lives in page.css and in the
    markup of the .html file. This file reads data and writes into the hooks
@@ -8,10 +8,16 @@
                       of neighbouring permits. Clicking a box opens screen 2.
    SCREEN 2  cluster  one group: neighbour lists, postcard picking, download.
                       Unchanged behaviour — only its entrance moved.
+   SCREEN 3  area     no group at all: he taps a centre, sets a reach, and every
+                      address inside the circle goes into the same mailing. The
+                      addresses come from the city's own address layer, which is
+                      published beside the snapshots and carries no permit
+                      history — the lede on that screen says so.
 
-   The screen lives in document.body.dataset.screen ('city' | 'cluster') and in
-   the address hash ('' | '#c<id>'). The stylesheet reads the attribute, the
-   back button and the browser's own back button both read the hash.
+   The screen lives in document.body.dataset.screen ('city' | 'cluster' |
+   'area') and in the address hash ('' | '#c<id>' | '#area'). The stylesheet
+   reads the attribute, the back button and the browser's own back button both
+   read the hash.
 
    Contract with the markup — these must exist, ids unchanged:
      #map      map canvas
@@ -28,6 +34,15 @@
      #strip-say line under the strip; how the last mailing call went
      #dateline #lede-city #lede-cluster #notice #provenance #staleness
      #zoomnote  empty plate over the map; the neighbour layer's own message
+     #area-go   enters the area screen; stands on the city screen only
+     #lede-area the area screen's own lede, written in the markup
+     #area-tools  the area's controls: the reach and the reset
+     #area-r    <input type=range>, the reach in feet. Its min, max, step and
+                value are the only statement of the limits — read, never copied
+     #area-r-say  the reach in words, beside the slider
+     #area-reset  drops the centre and everything picked with it
+     #legend-area the area screen's own map key
+     #provenance-area  which day the address layer was pulled
      .yrs .win .rsince    runtime text slots, filled wherever they appear
 
    Classes this file emits (style them freely, don't rename):
@@ -83,13 +98,35 @@ const M_PER_PX_Z0 = 78271.51696;
 /* Metres in a degree of latitude, and in a degree of longitude at the equator:
    the scale that turns a pair of coordinates into a distance on the ground. */
 const M_PER_DEG = 111320;
-/* Measuring the spacing is quadratic in the length of the list, which is
-   nothing at a few hundred addresses. Past this the median is read off a
-   random sample: a cost guard, not a different answer. */
+/* How many points the step is measured FROM. Every one of them is measured
+   against the whole list — the grid below makes that cheap — so this caps the
+   number of questions asked and nothing else. Past it the questions are a
+   random sample of the list; each answer is still exact. */
 const STEP_SAMPLE_MAX = 2000;
+/* The cell of that grid, in metres on the ground. The largest a dot on this
+   page can be across is MAX_DOT_M / DOT_FRACTION ≈ 17.1 m, so any neighbour
+   close enough to decide the size of a dot sits inside one ring of cells — the
+   walk almost always ends after the first. */
+const STEP_CELL_M = 20;
+/* How far the walk may go: 25 cells, 500 m. A point with nothing inside half a
+   kilometre stands alone, and its "step" says nothing about how the ground it
+   is on is built up — so it is left out of the median rather than dragging it. */
+const STEP_MAX_RING = 25;
 
 /* shown over a live map when the dots have been dropped for being too small */
 const ZOOM_NOTE = 'Zoom in to pick houses — at this distance one dot would cover several of them.';
+
+/* What the area screen says, in the three states it has. The layer being absent
+   is a state and not a failure: it is published by another pipeline, and a page
+   that opened before it did says so and goes on drawing the map. */
+const AREA_NO_LAYER = 'The address list for this city is not available yet.';
+const AREA_NO_CENTRE = 'Tap the map to set the centre of your area.';
+const AREA_PROVENANCE = gen =>
+  'Address list pulled from the City of San Francisco on ' + gen + '.';
+const AREA_LEDE = (m, ft) =>
+  '<b>' + m + '</b> addresses within <b>' + ft + ' ft</b> of the centre. '
+  + 'Tap a house on the map or a row below to drop it or add it back. '
+  + 'Tap a house outside the circle to start there instead.';
 
 /* Sent as the event data of every camera move this page orders, and handed back
    by Mapbox on every event that move fires. It is the whole of how a flight the
@@ -108,6 +145,23 @@ const CITY_LAYERS    = ['city-box-fill','city-box-line','city-solo','city-in'];
 /* the drawn dot and the target it is caught by come and go together */
 const NB_LAYERS      = ['nb-dots','nb-hit'];
 const CLUSTER_LAYERS = ['nb-dots','nb-hit','rr-x','rr-hit'];
+/* The area screen's own four, bottom to top. The ring is drawn under the houses
+   on purpose: it is the boundary of what he took, and the houses are the thing
+   he is picking. AD_LAYERS is the pair that answers to the zoom — the ring does
+   not, because a ring is legible at any distance and a house dot is not. */
+const AD_LAYERS      = ['ad-dots','ad-hit'];
+const AREA_LAYERS    = ['area-fill','area-line','ad-hit','ad-dots'];
+
+/* The stamp of the address layer. The addr- prefix is deliberate and load-
+   bearing: this stamp and a snapshot stamp end up in the same column of
+   mailing_addresses, and the prefix is what tells one from the other there. */
+const AD_STAMP_RE = /^addr-\d{8}-\d{4}$/;
+
+/* Feet to metres, for the reach. The slider speaks feet because the man does. */
+const FT_TO_M = 0.3048;
+/* How smooth the ring is. 64 sides is round at every zoom this page draws and
+   cheap enough to rebuild on every notch of the slider. */
+const AREA_RING_SIDES = 64;
 
 const DATA_ERROR = 'We could not reach the permit data. Reply to the email this '
                  + 'page came with and we will send the list directly.';
@@ -243,6 +297,36 @@ let NB_LAT    = 37.76;      // cluster latitude, for the metre-to-pixel scale
    of a flight and every notch of a wheel; without this, each of those frames
    would write a layout property that already says what it is being told. */
 let NB_SHOWN  = null;       // null until either screen has set it once
+
+/* ------------------------------------------------------- the address layer */
+/* The city's own address list, under a pointer and a stamp of its own. It is
+   published by another pipeline than the snapshots, so every one of these may
+   stay at its opening value for the whole life of the page — that is the layer
+   being absent, which is a state the screen shows and not an error it reports.
+   All of it survives leaving the screen and coming back within the session; a
+   reload does not keep it, and is not meant to. */
+let AD_STAMP = null;          // stamp of the address layer, once latest.json answered
+let AD_GEN   = '';            // its generated line
+let AD_INDEX = null;          // index.json
+let AD_DEAD  = false;         // the layer is not there
+let AD_ASKED = false;         // adStart() has been fired; it runs once a session
+const AD_FILES = new Map();   // file -> array of addresses, or 'loading', or 'failed'
+let AD_BUILDINGS = [];        // groupBuildings() over every loaded file
+let AD_OF_ADDR = new Map();   // address -> building
+/* the address rows themselves, by address: the zip, the point and the
+   neighbourhood the mailing needs, which a building does not carry */
+let AD_ROW = new Map();
+let AD_STEP_M = 0, AD_DOT_M = 0, AD_HIT_M = 0, AD_MIN_Z = ZOOM_FLOOR, AD_LAT = 37.76;
+let AD_SHOWN = null;          // NB_SHOWN's opposite number, for the area's dots
+
+/* The area he drew. AREA_DROPPED is what he took OUT by hand, and it is the
+   only thing that survives a change of the reach: widening the circle must not
+   hand him back the houses he had just struck off. */
+let AREA = null;              // {lon, lat} — the centre, or null
+let AREA_R_M = 0;             // reach in metres, read off #area-r
+const AREA_DROPPED = new Set();
+let AREA_LIST = [];           // buildings inside the circle, nearest first
+let AREA_PIN = null;          // the marker on the centre, once there is one
 
 const $ = id => document.getElementById(id);
 const fmt = d => d ? new Date(d+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}) : '';
@@ -469,21 +553,44 @@ function initMap(){
     if (mapReady) return;
     clearTimeout(timer);
     mapReady = true; mapDead = null;
-    if (SCREEN === 'cluster') { if (CUR) paintLayers(); } else paintCity();
+    if (SCREEN === 'cluster') { if (CUR) paintLayers(); }
+    else if (SCREEN === 'area'){
+      /* A page opened straight on #area got here with no camera move of its
+         own, so nothing has asked for a district yet — the map being ready is
+         the first moment there is a view to ask about. */
+      areaMarker(true); paintArea(); adWant();
+    }
+    else paintCity();
   };
   map.on('style.load', ready);
   map.on('load', ready);
   if (map.isStyleLoaded()) ready();
   /* the key does not take pointer events, so a tap that looks like it landed on
      the key lands on the map instead — fold it back rather than ignore it */
-  map.on('click', () => setLegend(false));
+  map.on('click', e => {
+    setLegend(false);
+    /* On the area screen the bare map is the centre control: a tap anywhere
+       that is not a house moves the circle there. The house layer answers for
+       its own taps one function down, so this stands out of its way — and it
+       has to ask the map rather than trust the order of handlers, because both
+       are listeners on the same click. */
+    if (SCREEN !== 'area' || AD_DEAD) return;
+    if (map.getLayer('ad-hit')
+        && map.queryRenderedFeatures(e.point, {layers:['ad-hit']}).length) return;
+    areaSetCentre(e.lngLat);
+  });
   /* The neighbour dots have a zoom under which they stop meaning one house
      each. 'zoom' fires all the way through a wheel, a pinch or a flight, so the
      layers follow the camera in both directions rather than being decided once
      at load. Only a flight the page ordered holds the note back, and only while
      it is in the air: 'moveend' is the landing and answers with the truth. */
   map.on('zoom', e => applyDotVisibility(!!(e && e.kpFlight)));
-  map.on('moveend', () => applyDotVisibility(false));
+  map.on('moveend', () => {
+    applyDotVisibility(false);
+    /* the address layer is fetched district by district, and what he is looking
+       at is the whole of how the page knows which ones he wants */
+    if (SCREEN === 'area') adWant();
+  });
   /* the panel changes width between modes, and disappears entirely on the city
      screen; Mapbox only watches the window, so tell it when its own box moves */
   if (window.ResizeObserver)
@@ -573,6 +680,8 @@ function paintCity(){
   CITY_LAYERS.forEach(id => { if (map.getLayer(id)) map.moveLayer(id); });
   setVis(CLUSTER_LAYERS, false);
   NB_SHOWN = false;       // the line above covers the neighbour layers as well
+  setVis(AREA_LAYERS, false);
+  AD_SHOWN = false;       // and this one covers the area's dots
   setVis(CITY_LAYERS, true);
   clearPins();
   applyDotVisibility();   // the city screen never carries the neighbour note
@@ -633,6 +742,11 @@ function enterCity(missingId){
   SCREEN = 'city'; CURID = null; CUR = null;
   document.body.dataset.screen = 'city';
   if (mapDead) mapFailed(mapDead);
+  /* the area he drew stays drawn in the state above; what leaves the map is the
+     picture of it, and it comes back when he does */
+  setVis(AREA_LAYERS, false);
+  AD_SHOWN = false;
+  areaMarker(false);
   paintCity();
 }
 
@@ -647,14 +761,48 @@ function enterCluster(id){
   if (sel.value !== String(id)) sel.value = String(id);
   if (mapDead) mapFailed(mapDead);
   setVis(CITY_LAYERS, false);
+  setVis(AREA_LAYERS, false);
+  AD_SHOWN = false;
+  areaMarker(false);
   clearPins();
   load(id);
+}
+
+/* The third screen. It carries no group, so CURID and CUR are emptied the way
+   the city screen empties them — everything it works with is the address layer
+   and the circle he drew on it, and both of those stand above the screen and
+   outlive leaving it. */
+function enterArea(){
+  $('notice').hidden = true;
+  setSaveNote('');
+  sayStrip(''); resetClearConfirm();
+  if (SCREEN === 'area') return;
+  SCREEN = 'area'; CURID = null; CUR = null;
+  document.body.dataset.screen = 'area';
+  if (mapDead) mapFailed(mapDead);
+  setVis(CITY_LAYERS, false);
+  setVis(CLUSTER_LAYERS, false);
+  NB_SHOWN = false;
+  clearPins();
+  areaMarker(true);
+  adStart();              // idempotent: the layer is fetched once a session
+  paintArea();
+  /* PICKED belongs to whichever screen is up, and a group he worked in between
+     left its own in there. What survived leaving this screen is the circle and
+     what he struck out of it; the pick is rebuilt from those two. */
+  PICKED.clear();
+  if (AREA) areaRecompute();
+  else { pushAD(); renderArea(); }
 }
 
 /* The hash is the address of the screen; every entrance goes through here so
    the back button and a click behave the same way. */
 function applyHash(){
-  const m = /^#c([A-Za-z0-9_-]+)$/.exec(location.hash || '');
+  const h = location.hash || '';
+  /* The area is addressable like a group is: it has no id of its own, because
+     it is not a thing the data proposes — it is a thing he drew. */
+  if (h === '#area'){ enterArea(); return; }
+  const m = /^#c([A-Za-z0-9_-]+)$/.exec(h);
   const id = m ? m[1] : null;
   if (id && hasCluster(id)) enterCluster(id);
   /* A group id does not survive the next data run, so a saved or forwarded
@@ -671,6 +819,10 @@ function goCity(){
   if (SCREEN === 'city' && !location.hash) return;
   history.pushState({}, '', location.pathname + location.search);
   enterCity(null);
+}
+function goArea(){
+  history.pushState({area:true}, '', '#area');
+  enterArea();
 }
 
 /* ----------------------------------------------------------- restoring */
@@ -845,9 +997,11 @@ function groupBuildings(list){
 
 /* One feature per building, carrying the addresses that share it. Mapbox
    flattens anything that is not a scalar, so the list travels as JSON and is
-   read back where the click lands. */
-function nbFC(){
-  return {type:'FeatureCollection', features: NB_BUILDINGS.map(b => ({
+   read back where the click lands. The group's dots and the area's dots are the
+   same drawing of the same fact, so they are built by the same function and
+   differ only in which list of buildings goes in. */
+function buildingFC(list){
+  return {type:'FeatureCollection', features: list.map(b => ({
     type:'Feature', geometry:{type:'Point', coordinates:[b.lon, b.lat]},
     properties:{
       addrs: JSON.stringify(b.addrs), n: b.addrs.length,
@@ -860,32 +1014,111 @@ function nbFC(){
     }
   }))};
 }
+function nbFC(){ return buildingFC(NB_BUILDINGS); }
+function adFC(){ return buildingFC(AD_BUILDINGS); }
 function pushNB(){
   if (map && map.getSource('nb')) map.getSource('nb').setData(nbFC());
+}
+function pushAD(){
+  if (map && map.getSource('ad')) map.getSource('ad').setData(adFC());
+}
+
+/* step: begin */
+/* Everything between these two markers is the measurement of the step and
+   nothing else. It reaches outside itself for metres() and for the four
+   constants M_PER_DEG, STEP_SAMPLE_MAX, STEP_CELL_M and STEP_MAX_RING, and for
+   nothing more — tools/step-check.mjs cuts the block out of this file and runs
+   it against a full O(n²) sweep of the same points, which it can only do while
+   that stays true. */
+
+/* The points dropped into square cells of STEP_CELL_M on the ground, so a
+   question about one point is answered against the handful of points in the
+   rings around it rather than against the whole list.
+   The width of a cell in degrees of longitude is taken at the HIGHEST latitude
+   of the list, which is where a degree is narrowest. That is what makes the
+   bound in stepNearest() below sound: metres() measures a pair at the cosine of
+   ITS OWN mean latitude, which is never smaller than the one used here, so a
+   pair separated by r cells of longitude is never closer than r cells of
+   ground — the direction the bound needs. */
+function stepGrid(pts){
+  let latMax = 0;
+  for (let i = 0; i < pts.length; i++){
+    const a = Math.abs(pts[i].lat);
+    if (a > latMax) latMax = a;
+  }
+  const k = Math.cos(latMax * Math.PI / 180) || 1;
+  const cellLat = STEP_CELL_M / M_PER_DEG;
+  const cellLon = STEP_CELL_M / (M_PER_DEG * k);
+  const cells = new Map();
+  const grid = {
+    cells: cells,
+    ix: p => Math.floor(p.lon / cellLon),
+    iy: p => Math.floor(p.lat / cellLat)
+  };
+  for (let i = 0; i < pts.length; i++){
+    const p = pts[i];
+    const key = grid.ix(p) + ':' + grid.iy(p);
+    const bucket = cells.get(key);
+    if (bucket) bucket.push(p); else cells.set(key, [p]);
+  }
+  return grid;
+}
+
+/* The distance from one point to the nearest OTHER point of the whole list,
+   exactly — not to the nearest point of a sample. Rings of cells are walked
+   outward from the point's own cell, and the walk stops as soon as what has
+   been found is no further away than the nearest cell not yet opened: a cell at
+   ring r+1 cannot hold anything closer than r cells of ground. That stopping
+   rule is the whole of why the answer is exact and not an approximation.
+   Infinity means the walk reached STEP_MAX_RING with nothing found, and the
+   caller drops the point rather than inventing a distance for it. */
+function stepNearest(grid, p){
+  const cx = grid.ix(p), cy = grid.iy(p);
+  let best = Infinity;
+  for (let r = 0; r <= STEP_MAX_RING; r++){
+    if (r > 0 && best <= (r - 1) * STEP_CELL_M) break;
+    for (let dx = -r; dx <= r; dx++){
+      const edge = Math.abs(dx) === r;
+      for (let dy = -r; dy <= r; dy++){
+        /* the ring, not the square: everything inside was walked already */
+        if (!edge && Math.abs(dy) !== r) continue;
+        const bucket = grid.cells.get((cx + dx) + ':' + (cy + dy));
+        if (!bucket) continue;
+        for (let i = 0; i < bucket.length; i++){
+          const q = bucket[i];
+          if (q === p) continue;
+          const d = metres(p, q);
+          if (d < best) best = d;
+        }
+      }
+    }
+  }
+  return best;
 }
 
 /* The step of this block: for every building the distance to the nearest other
    building, and the median of those. That number is the only thing that decides
-   how big a dot is — it comes out of the data, never out of a constant. */
+   how big a dot is — it comes out of the data, never out of a constant.
+   Past STEP_SAMPLE_MAX the points asked are a random sample; the list they are
+   asked against is always the whole of it. Sampling both sides, which is what
+   this did before, only ever thins the ground and so only ever reports a step
+   wider than the real one. */
 function medianStep(list){
-  let pts = (list || []).filter(p => typeof p.lon === 'number' && typeof p.lat === 'number');
+  const pts = (list || []).filter(p => typeof p.lon === 'number' && typeof p.lat === 'number');
   if (pts.length < 2) return 0;
-  if (pts.length > STEP_SAMPLE_MAX){
-    pts = pts.slice();
+  let ask = pts;
+  if (ask.length > STEP_SAMPLE_MAX){
+    ask = pts.slice();
     for (let i = 0; i < STEP_SAMPLE_MAX; i++){        // partial Fisher–Yates
-      const j = i + Math.floor(Math.random() * (pts.length - i));
-      const t = pts[i]; pts[i] = pts[j]; pts[j] = t;
+      const j = i + Math.floor(Math.random() * (ask.length - i));
+      const t = ask[i]; ask[i] = ask[j]; ask[j] = t;
     }
-    pts = pts.slice(0, STEP_SAMPLE_MAX);
+    ask = ask.slice(0, STEP_SAMPLE_MAX);
   }
+  const grid = stepGrid(pts);
   const ds = [];
-  for (let i = 0; i < pts.length; i++){
-    let best = Infinity;
-    for (let j = 0; j < pts.length; j++){
-      if (i === j) continue;
-      const d = metres(pts[i], pts[j]);
-      if (d < best) best = d;
-    }
+  for (let i = 0; i < ask.length; i++){
+    const best = stepNearest(grid, ask[i]);
     if (isFinite(best)) ds.push(best);
   }
   if (!ds.length) return 0;
@@ -893,6 +1126,7 @@ function medianStep(list){
   const m = ds.length >> 1;
   return ds.length % 2 ? ds[m] : (ds[m-1] + ds[m]) / 2;
 }
+/* step: end */
 
 function mPerPx(z, lat){
   return M_PER_PX_Z0 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
@@ -917,6 +1151,26 @@ function dotFloorZoom(diameterM, lat){
   return Math.min(Math.max(z, ZOOM_FLOOR), ZOOM_CEIL);
 }
 
+/* The three ground sizes a dot layer is drawn at, from the step of the list it
+   was measured off. One function because there is one formula: the group's
+   layers and the area's layers differ in which buildings they measured and in
+   nothing else, and a second copy of this would be a second answer waiting to
+   drift from the first.
+   One building has nothing to be too close to, so the fallback there is
+   harmless and any value will do. The condition is the count and not the median
+   on purpose: a zero median used to mean "addresses stacked on one point" and
+   bought the largest dot on the page for the densest block on the map — the
+   exact opposite of what a failed measurement should buy. Grouping has made
+   that reading impossible, and the count says so plainly. */
+function dotSizes(stepM, count, lat){
+  const step = count >= 2 ? stepM : MAX_DOT_M / DOT_FRACTION;
+  const dot = Math.min(step * DOT_FRACTION, MAX_DOT_M);
+  /* Caught at the whole step: as wide as a target can get before it starts
+     answering for the house next door. Always at least the drawn dot, which
+     takes DOT_FRACTION of the step and DOT_FRACTION is under one. */
+  return {dot: dot, hit: step, minZ: dotFloorZoom(dot, lat)};
+}
+
 /* Everything the neighbour layers need in metres, measured once per cluster
    off that cluster's own buildings. */
 function measureCluster(){
@@ -926,19 +1180,10 @@ function measureCluster(){
   NB_LAT = NB_BUILDINGS.length
     ? NB_BUILDINGS.reduce((s, b) => s + b.lat, 0) / NB_BUILDINGS.length : 37.76;
   NB_STEP_M = medianStep(NB_BUILDINGS);
-  /* One building has nothing to be too close to, so the fallback there is
-     harmless and any value will do. The condition is the count and not the
-     median on purpose: a zero median used to mean "addresses stacked on one
-     point" and bought the largest dot on the page for the densest block on the
-     map — the exact opposite of what a failed measurement should buy. Grouping
-     has made that reading impossible, and the count says so plainly. */
-  const step = NB_BUILDINGS.length >= 2 ? NB_STEP_M : MAX_DOT_M / DOT_FRACTION;
-  NB_DOT_M = Math.min(step * DOT_FRACTION, MAX_DOT_M);
-  /* Caught at half the step: as wide as a target can get before it starts
-     answering for the house next door. Always at least the drawn dot, which
-     takes DOT_FRACTION of the step and DOT_FRACTION is under one. */
-  NB_HIT_M = step;
-  NB_MIN_Z = dotFloorZoom(NB_DOT_M, NB_LAT);
+  const size = dotSizes(NB_STEP_M, NB_BUILDINGS.length, NB_LAT);
+  NB_DOT_M = size.dot;
+  NB_HIT_M = size.hit;
+  NB_MIN_Z = size.minZ;
 }
 
 /* Called on every zoom frame, so it writes nothing it is not changing. */
@@ -954,8 +1199,20 @@ function setNote(on){
    the camera is mid-flight on this page's own orders; a wheel, a drag and a
    pinch never set it. */
 function applyDotVisibility(flying){
-  const live = !!map && mapReady && !mapDead && SCREEN === 'cluster' && !!CUR;
+  const alive = !!map && mapReady && !mapDead;
+  const live = alive && ((SCREEN === 'cluster' && !!CUR)
+                      || (SCREEN === 'area' && !AD_DEAD));
   if (!live){ setNote(false); return; }   // city screen, dead map, dead data
+  if (SCREEN === 'area'){
+    /* The area's dots answer to the zoom exactly as the group's do, and to one
+       thing besides: until a district has been fetched there is nothing to
+       draw, and the note — "zoom in to pick houses" — is the right word for
+       that too, because zooming in is what fetches one. */
+    const shown = map.getZoom() >= AD_MIN_Z && AD_BUILDINGS.length > 0;
+    if (AD_SHOWN !== shown){ AD_SHOWN = shown; setVis(AD_LAYERS, shown); }
+    setNote(!shown && !flying);
+    return;
+  }
   const show = map.getZoom() >= NB_MIN_Z;
   if (NB_SHOWN !== show){ NB_SHOWN = show; setVis(NB_LAYERS, show); }
   /* The note belongs to the screen where the map is the picking surface: walk
@@ -1049,6 +1306,8 @@ function paintLayers(){
     }
   }
   setVis(CITY_LAYERS, false);
+  setVis(AREA_LAYERS, false);
+  AD_SHOWN = false;
   setVis(CLUSTER_LAYERS, true);
   NB_SHOWN = true;        // the line above covers the neighbour layers as well
   /* bottom to top. The neighbour target goes under everything: it is the widest
@@ -1100,6 +1359,366 @@ function paintLayers(){
   /* the camera is still standing at the city's zoom for one more frame; the
      flight it was just sent on is what the answer should be read from */
   applyDotVisibility(true);
+}
+
+/* ---------------------------------------------------------- the area screen */
+/* The layer is asked for once a session and in two steps, exactly as the
+   snapshot is: latest.json says which stamp is current, files under a stamp are
+   immutable, and a publish landing while the page is open cannot pull the
+   ground out from under a reader mid-tap.
+   Every refusal along the way lands in the same place. The layer is published
+   by another pipeline than the snapshots and may simply not be there yet — that
+   is a state the screen shows in words, not an error worth a line in a console
+   nobody is reading. */
+function adStart(){
+  if (AD_ASKED) return;
+  AD_ASKED = true;
+  fetch(ADDR_BASE + 'latest.json', {cache:'no-cache'}).then(ok)
+    .then(j => {
+      const stamp = String((j && j.stamp) || '');
+      if (!AD_STAMP_RE.test(stamp)) throw new Error('stamp');
+      AD_STAMP = stamp;
+      AD_GEN = String((j && j.generated) || '');
+      return fetch(ADDR_BASE + AD_STAMP + '/index.json').then(ok);
+    })
+    .then(j => {
+      AD_INDEX = j;
+      const pr = $('provenance-area');
+      if (pr){ pr.textContent = AREA_PROVENANCE(AD_GEN); pr.hidden = false; }
+      adWant();
+    })
+    .catch(adGone);
+}
+
+function adGone(){
+  AD_DEAD = true;
+  adTools(false);
+  renderArea();
+}
+
+/* Nothing to point at means nothing to point with: the two controls go dead
+   together with the layer, rather than standing there taking presses that
+   cannot do anything. */
+function adTools(on){
+  const r = $('area-r'), b = $('area-reset');
+  if (r) r.disabled = !on;
+  if (b) b.disabled = !on;
+}
+
+/* [west, south, east, north] against the same, in degrees. Touching counts as
+   crossing: a district whose edge is the edge of the view still has addresses
+   on that edge. */
+function boxHits(a, b){
+  if (!a || a.length !== 4) return false;
+  return !(a[2] < b[0] || a[0] > b[2] || a[3] < b[1] || a[1] > b[3]);
+}
+
+/* Which districts are wanted right now, and the fetch of the ones not held yet.
+   Two questions, and both have to be asked: what he is LOOKING at, so the dots
+   are under his finger when he taps; and what his circle COVERS, because the
+   reach can be set wider than the screen and every address inside it is going
+   into the mailing whether or not it was ever on screen.
+   The view half is held under ZOOM_FLOOR — at that distance the view is half
+   the city, and fetching half the city to draw dots too small to read is a
+   download for nothing. The circle half has no such condition: it is not about
+   drawing. */
+function adWant(){
+  if (AD_DEAD || !AD_INDEX || !AD_STAMP) return;
+  const files = (AD_INDEX && AD_INDEX.files) || [];
+  const want = [];
+  const add = box => files.forEach(f => {
+    if (boxHits(f.bbox, box) && want.indexOf(f) < 0) want.push(f);
+  });
+  if (map && mapReady && !mapDead && map.getZoom() >= ZOOM_FLOOR){
+    const b = map.getBounds();
+    add([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+  }
+  if (AREA && AREA_R_M > 0){
+    const dLat = AREA_R_M / M_PER_DEG;
+    const dLon = AREA_R_M / (M_PER_DEG * (Math.cos(AREA.lat * Math.PI / 180) || 1));
+    add([AREA.lon - dLon, AREA.lat - dLat, AREA.lon + dLon, AREA.lat + dLat]);
+  }
+  want.forEach(f => {
+    const name = f.file;
+    if (!name) return;
+    const held = AD_FILES.get(name);
+    /* 'loading' is in flight and 'failed' is worth another try on the next
+       move; an array is the answer and is never asked for twice */
+    if (held === 'loading' || Array.isArray(held)) return;
+    AD_FILES.set(name, 'loading');
+    fetch(ADDR_BASE + AD_STAMP + '/' + name).then(ok)
+      .then(j => {
+        const nhood = (j && j.meta && j.meta.nhood) || f.nhood || '';
+        const rows = ((j && j.addresses) || []).map(x => ({
+          a: x.a, zip: x.zip || '', lon: x.lon, lat: x.lat, nhood: nhood
+        }));
+        AD_FILES.set(name, rows);
+        adRebuild();
+      })
+      .catch(() => {
+        /* one district short is one district short, not a dead screen: the rest
+           of the map goes on working and the next move asks again */
+        AD_FILES.set(name, 'failed');
+      });
+  });
+}
+
+/* Everything measured again over everything held. The step is read off a bigger
+   list with every district that lands, so the dots may change size a little as
+   he pans — that is the measurement getting better, not a defect. */
+function adRebuild(){
+  const all = [];
+  AD_FILES.forEach(v => { if (Array.isArray(v)) all.push.apply(all, v); });
+  AD_BUILDINGS = groupBuildings(all);
+  AD_OF_ADDR = new Map();
+  AD_BUILDINGS.forEach(b => b.addrs.forEach(a => AD_OF_ADDR.set(a, b)));
+  AD_ROW = new Map();
+  all.forEach(r => AD_ROW.set(r.a, r));
+  AD_LAT = AD_BUILDINGS.length
+    ? AD_BUILDINGS.reduce((s, b) => s + b.lat, 0) / AD_BUILDINGS.length : 37.76;
+  AD_STEP_M = medianStep(AD_BUILDINGS);
+  const size = dotSizes(AD_STEP_M, AD_BUILDINGS.length, AD_LAT);
+  AD_DOT_M = size.dot;
+  AD_HIT_M = size.hit;
+  AD_MIN_Z = size.minZ;
+  paintArea();
+  /* a wider list can only add houses to a circle already drawn, so the pick is
+     recomputed over it — and with no circle there is nothing to recompute */
+  if (AREA) areaRecompute();
+  else { pushAD(); renderArea(); }
+}
+
+/* The reach, as a ring on the ground. Degrees of longitude are narrowed by the
+   latitude, the same correction metres() makes, so the ring is round on the
+   ground rather than round on the screen. */
+function areaFC(){
+  if (!AREA || !(AREA_R_M > 0)) return {type:'FeatureCollection', features:[]};
+  const dLat = AREA_R_M / M_PER_DEG;
+  const dLon = AREA_R_M / (M_PER_DEG * (Math.cos(AREA.lat * Math.PI / 180) || 1));
+  const ring = [];
+  for (let i = 0; i <= AREA_RING_SIDES; i++){
+    const t = i / AREA_RING_SIDES * 2 * Math.PI;
+    ring.push([AREA.lon + Math.cos(t) * dLon, AREA.lat + Math.sin(t) * dLat]);
+  }
+  return {type:'FeatureCollection', features:[{
+    type:'Feature', properties:{}, geometry:{type:'Polygon', coordinates:[ring]}
+  }]};
+}
+
+function paintArea(){
+  if (!map || !mapReady || SCREEN !== 'area') return;
+  /* Before the first district lands there is nothing measured to size a dot by.
+     The ceiling stands in until adRebuild() has measured one — nothing is drawn
+     at that point, the source is empty, so the value only has to be finite. */
+  const dotM = AD_DOT_M > 0 ? AD_DOT_M : MAX_DOT_M;
+  const hitM = AD_HIT_M > 0 ? AD_HIT_M : MAX_DOT_M;
+
+  const ring = areaFC();
+  if (map.getSource('area')) map.getSource('area').setData(ring); else {
+    map.addSource('area', {type:'geojson', data: ring});
+    /* the same orange outline the city screen draws around a group: an area is
+       a boundary he is claiming, not a permit somebody pulled */
+    map.addLayer({id:'area-fill', type:'fill', source:'area',
+      paint:{'fill-color':'#FF6B1A', 'fill-opacity':0.10}});
+    map.addLayer({id:'area-line', type:'line', source:'area',
+      paint:{'line-color':'#FF9B57', 'line-width':1.4, 'line-opacity':0.9}});
+  }
+
+  const ad = adFC();
+  if (map.getSource('ad')) map.getSource('ad').setData(ad); else {
+    map.addSource('ad', {type:'geojson', data: ad});
+    /* draw small, catch large — the trade the group's layers make, made again
+       here for the same reason and with the same three readings of a dot */
+    map.addLayer({id:'ad-hit', type:'circle', source:'ad', paint:{
+      'circle-radius': groundRadius(hitM, AD_LAT),
+      'circle-color':'#000', 'circle-opacity':0
+    }});
+    map.addLayer({id:'ad-dots', type:'circle', source:'ad', paint:{
+      'circle-radius': groundRadius(dotM, AD_LAT),
+      'circle-color':['case',
+        ['==',['get','sel'],1],'#4ED08A',
+        ['==',['get','hist'],1],'#8A97A6',
+        '#5FB0E8'],
+      'circle-opacity':['case',
+        ['all',['==',['get','hist'],1],['!=',['get','sel'],1]],0.6,
+        0.85],
+      'circle-stroke-width':['case',['==',['get','sel'],1],2,1],
+      'circle-stroke-color':['case',['==',['get','sel'],1],'#FFFFFF','#0F1720'],
+      'circle-stroke-opacity':0.85
+    }});
+    map.on('click','ad-hit', adClick);
+    map.on('mouseenter','ad-hit', () => {
+      if (SCREEN === 'area') map.getCanvas().style.cursor = 'pointer';
+    });
+    map.on('mouseleave','ad-hit', () => { map.getCanvas().style.cursor = ''; });
+  }
+  /* the step is re-measured with every district that lands, so both radii are
+     re-read on every paint */
+  if (map.getLayer('ad-dots'))
+    map.setPaintProperty('ad-dots', 'circle-radius', groundRadius(dotM, AD_LAT));
+  if (map.getLayer('ad-hit'))
+    map.setPaintProperty('ad-hit', 'circle-radius', groundRadius(hitM, AD_LAT));
+
+  setVis(CITY_LAYERS, false);
+  setVis(CLUSTER_LAYERS, false);
+  NB_SHOWN = false;
+  setVis(AREA_LAYERS, true);
+  AD_SHOWN = true;
+  AREA_LAYERS.forEach(id => { if (map.getLayer(id)) map.moveLayer(id); });
+  applyDotVisibility();   // the dots may be under their own zoom floor
+}
+
+/* A tap on a house of the address layer. Inside the circle it takes that roof
+   in or out; outside it — or before there is a circle at all — it moves the
+   centre there. The second half is not a convenience: at the zoom where houses
+   are pickable their targets cover the ground edge to edge, and without it the
+   centre could never be moved by tapping again. */
+function adClick(e){
+  const f = e.features && e.features[0];
+  if (!f) return;
+  const addrs = addrsOf(f);
+  if (!addrs.length) return;
+  const b = AD_OF_ADDR.get(addrs[0]);
+  if (AREA && b && AREA_LIST.indexOf(b) >= 0){ areaToggle(addrs); return; }
+  const c = f.geometry && f.geometry.coordinates;
+  if (c) areaSetCentre({lng: c[0], lat: c[1]});
+}
+
+/* The centre, as a hollow white ring. Deliberately not orange and deliberately
+   not a pin: orange on this page means a permit and a pin means an address, and
+   the centre is neither — it is the spot he pointed at. */
+function areaMarker(on){
+  if (!map) return;
+  if (!on || !AREA){ if (AREA_PIN) AREA_PIN.remove(); return; }
+  if (!AREA_PIN){
+    const el = document.createElement('div');
+    el.style.cssText = 'width:14px;height:14px;border-radius:50%;box-sizing:border-box;'
+      + 'border:2px solid #FFFFFF;background:transparent';
+    AREA_PIN = new mapboxgl.Marker({element: el});
+  }
+  AREA_PIN.setLngLat([AREA.lon, AREA.lat]).addTo(map);
+}
+
+/* A new centre is a new area: what he had struck off belonged to the circle he
+   has just moved away from, and carrying those exclusions to another block
+   would silently drop houses he never looked at. */
+function areaSetCentre(ll){
+  if (AD_DEAD || !ll) return;
+  AREA = {lon: ll.lng, lat: ll.lat};
+  AREA_DROPPED.clear();
+  areaMarker(true);
+  /* Land close enough that the houses are drawn. Under the dot floor he would
+     be looking at his own circle over an empty map, with a note explaining the
+     emptiness — so the camera goes in, by the same margin a group opens with. */
+  if (map && mapReady && !mapDead && map.getZoom() < AD_MIN_Z + OPEN_ZOOM_MARGIN)
+    map.easeTo({center:[AREA.lon, AREA.lat],
+                zoom: Math.min(AD_MIN_Z + OPEN_ZOOM_MARGIN, MAP_MAX_ZOOM),
+                duration:400}, FLIGHT);
+  adWant();
+  areaRecompute();
+}
+
+/* What is inside the circle, and what of it is picked. Nearest first, because
+   that is the order he reads the map in and the order the mailing goes over in.
+   A roof already behind him is not proposed — the same rule autoPick() runs on,
+   and for the same reason: the history advises, and he can still take it by
+   hand. What he struck off by hand stays struck off. */
+function areaRecompute(){
+  PICKED.clear();
+  AREA_LIST = [];
+  if (AREA && AREA_R_M > 0){
+    const near = [];
+    AD_BUILDINGS.forEach((b, i) => {
+      const d = metres(b, AREA);
+      if (d <= AREA_R_M) near.push({b: b, i: i, d: d});
+    });
+    near.sort((u, v) => u.d - v.d || u.i - v.i);
+    AREA_LIST = near.map(x => x.b);
+    AREA_LIST.forEach(b => {
+      if (b.addrs.every(a => DONE.has(a))) return;
+      if (b.addrs.some(a => AREA_DROPPED.has(a))) return;
+      b.addrs.forEach(a => PICKED.add(a));
+    });
+  }
+  if (map && map.getSource('area')) map.getSource('area').setData(areaFC());
+  pushAD();
+  renderArea();
+}
+
+/* One roof, one decision — toggleAddrs() with a memory. Taking a house out here
+   has to be remembered, because the pick is recomputed from scratch every time
+   the reach moves, and without AREA_DROPPED every drop would be undone by the
+   next notch of the slider. */
+function areaToggle(addrs){
+  if (!addrs || !addrs.length) return;
+  const full = addrs.every(a => PICKED.has(a));
+  addrs.forEach(a => {
+    if (full){ PICKED.delete(a); AREA_DROPPED.add(a); }
+    else { PICKED.add(a); AREA_DROPPED.delete(a); }
+  });
+  pushAD();
+  renderArea();
+}
+
+/* The panel still lists addresses and the map still deals in roofs; a row hands
+   its click to the building it sits on, exactly as toggle() does. */
+function areaRow(a){
+  const b = AD_OF_ADDR.get(a);
+  areaToggle(b ? b.addrs : [a]);
+}
+
+/* The area's panel. It writes into #pane, #count and the two buttons under
+   them, and into nothing else — the other screens own their own. */
+function renderArea(){
+  if (SCREEN !== 'area') return;
+  const pane = $('pane');
+  const clear = $('clear');
+  const tomail = $('tomail');
+  if (AD_DEAD || !AREA){
+    pane.innerHTML = '<p class="hint">'
+                   + (AD_DEAD ? AREA_NO_LAYER : AREA_NO_CENTRE) + '</p>';
+    $('count').innerHTML = '';
+    clear.hidden = true;
+    tomail.hidden = true;
+    return;
+  }
+  /* Streets, biggest first. There are no permits on this screen, so there is no
+     hot half and no cold half to sort into — the two band headers the group's
+     list carries would be dividing the list by a fact this list does not have. */
+  const rows = [];
+  AREA_LIST.forEach(b => b.addrs.forEach(a =>
+    rows.push(AD_ROW.get(a) || {a: a, zip: ''})));
+  const by = {};
+  rows.forEach(r => (by[street(r.a)] ||= []).push(r));
+  const order = Object.keys(by)
+    .sort((a, b) => by[b].length - by[a].length || String(a).localeCompare(b));
+  order.forEach(s => by[s].sort((x, y) => num(x.a) - num(y.a)));
+
+  const ftEl = $('area-r');
+  let h = '<p class="hint">'
+        + AREA_LEDE(rows.length, ftEl ? ftEl.value : '') + '</p>';
+  order.forEach(s => {
+    h += '<div class="st">' + esc(s) + '<span>' + by[s].length + '</span></div>';
+    by[s].forEach(n => {
+      const done = DONE.get(n.a);
+      h += '<div class="row pick'+(PICKED.has(n.a)?' on':'')+(CART.has(n.a)?' inmail':'')
+         + (done?' hist':'') + '" data-a="'+esc(n.a)+'">'
+         + '<b>'+esc(n.a)+'</b><span class="z">'+esc(n.zip)+'</span>'
+         + (done ? '<span class="hx">'+esc(HX_WORD[done.kind] || done.kind)+'</span>' : '')
+         + (SIGNED_IN ? histAction(n.a, done) : '')
+         + '</div>';
+    });
+  });
+  pane.innerHTML = h;
+  pane.querySelectorAll('.row.pick').forEach(r =>
+    r.addEventListener('click', () => areaRow(r.dataset.a)));
+  pane.querySelectorAll('.hxact').forEach(b =>
+    b.addEventListener('click', ev => histClick(ev, b)));
+
+  const n = PICKED.size;
+  $('count').innerHTML = n ? '<b>'+n+'</b> postcards' : 'Nothing picked yet';
+  clear.hidden = !n;
+  tomail.hidden = !n;
 }
 
 /* ---------------------------------------------------------------- panel */
@@ -1344,8 +1963,10 @@ function histClick(ev, btn){
          still on its way to print. Nothing comes back on a restore: what he
          wants picked, he picks. */
       PICKED.delete(a);
-      pushNB();
-      if (MODE === 'mail') render();
+      /* on the area screen the exclusion is also a hand-drop: without it the
+         next move of the slider would offer the house straight back */
+      if (SCREEN === 'area'){ AREA_DROPPED.add(a); pushAD(); renderArea(); }
+      else { pushNB(); if (MODE === 'mail') render(); }
       if (!CART.has(a)){ sayStrip('Excluded.'); return; }
       return cartPost({city: CITY, trade: TRADE, op:'remove', addresses:[a]})
         .then(() => { sayStrip('Excluded.'); });
@@ -1378,7 +1999,48 @@ function setMode(m){
    any data has landed, which is why render() returns on a null CUR. */
 setMode(MODE);
 
+/* ------------------------------------------------- the area's own controls */
+/* Wired at the top level, like the tabs and the key above: all three nodes are
+   in the markup whether or not any data ever arrives. Nothing here writes into
+   one of them — the reach is READ off the slider, which is where its limits are
+   declared, and the label beside it ships already saying what the slider says.
+   A synchronous write into a served node is what takes hydration down. */
+$('area-go').onclick = goArea;
+
+AREA_R_M = Number($('area-r').value) * FT_TO_M;
+$('area-r').addEventListener('input', () => {
+  const el = $('area-r');
+  AREA_R_M = Number(el.value) * FT_TO_M;
+  $('area-r-say').textContent = el.value + ' ft';
+  if (SCREEN !== 'area') return;
+  /* AREA_DROPPED is deliberately left alone: a wider reach must not hand back
+     the houses he had just taken out of it */
+  adWant();
+  areaRecompute();
+});
+
+$('area-reset').onclick = () => {
+  AREA = null;
+  AREA_DROPPED.clear();
+  PICKED.clear();
+  AREA_LIST = [];
+  areaMarker(false);
+  if (map && map.getSource('area')) map.getSource('area').setData(areaFC());
+  pushAD();
+  renderArea();
+};
+
 $('clear').onclick = () => {
+  /* On the area screen clearing is not forgetting: every house in the circle
+     goes into AREA_DROPPED, or the next notch of the slider would pick them all
+     straight back up. */
+  if (SCREEN === 'area'){
+    AREA_LIST.forEach(b => b.addrs.forEach(a => AREA_DROPPED.add(a)));
+    PICKED.clear();
+    pushAD();
+    renderArea();
+    return;
+  }
   if (!CUR) return;
   PICKED.clear();
   pushNB();
@@ -1590,6 +2252,7 @@ function cartApply(json){
   renderStrip();
   /* the rows carry the mark, so the list is redrawn to show what moved */
   if (SCREEN === 'cluster' && MODE === 'mail') render();
+  if (SCREEN === 'area') renderArea();
 }
 
 /* Asked once, at load. A mailing that cannot be read is not an error worth a
@@ -1630,6 +2293,10 @@ function historyApply(json){
     pushNB();                        // the roofs that go grey
     if (MODE === 'mail') render();   // the word on the row and the button beside it
   }
+  /* The same two on the area screen, and PICKED is left alone there for the
+     same reason it is here: a history that lands after he has picked must not
+     take the pick apart under him. */
+  if (SCREEN === 'area'){ pushAD(); renderArea(); }
 }
 
 /* Asked once, at load, and never a sentence when it fails: a history that
@@ -1667,7 +2334,53 @@ function cartFailed(e){
 /* The picks of this group, handed to the mailing. They go over in the order of
    the neighbour list and with the same neighbourhood and street line a saved
    selection carries — it is the same body, minus what only a selection needs. */
+/* The area's picks, handed to the same mailing the groups feed. Everything the
+   row in the mailing needs is in AD_ROW: the zip, the point and the district
+   the address was published under. The stamp that travels with them is the
+   address layer's, not the snapshot's — they came off different data, and the
+   addr- prefix is what says so in the column they land in. */
+function tomailArea(){
+  if (!PICKED.size || !AD_STAMP) return;
+  const btn = $('tomail');
+  const picks = [];
+  const hoods = {}, streets = {};
+  AREA_LIST.forEach(b => b.addrs.forEach(a => {
+    if (!PICKED.has(a)) return;
+    const r = AD_ROW.get(a) || {};
+    const placed = typeof r.lat === 'number' && typeof r.lon === 'number';
+    picks.push({a: a, zip: r.zip || null,
+                lat: placed ? r.lat : null, lon: placed ? r.lon : null});
+    if (r.nhood) hoods[r.nhood] = (hoods[r.nhood] || 0) + 1;
+    const s = street(a);
+    streets[s] = (streets[s] || 0) + 1;
+  }));
+  if (!picks.length) return;
+  /* biggest first, alphabetical where they tie — an order, not a preference */
+  const rank = counts => Object.keys(counts)
+    .sort((a, b) => counts[b] - counts[a] || String(a).localeCompare(b));
+  const nhood = rank(hoods)[0] || null;
+  const label = rank(streets).slice(0, 3).join(', ') || null;
+
+  const before = CART.size;
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+  sayStrip('');
+  resetClearConfirm();
+  cartPost({
+    city: CITY, trade: TRADE, op: 'add',
+    addresses: picks, snapshot_stamp: AD_STAMP,
+    nhood: nhood, label: label
+  }).then(() => {
+    const added = CART.size - before;
+    sayStrip(added > 0 ? added + ' added to the mailing.' : 'Already in the mailing.');
+  }).catch(cartFailed).then(() => {
+    btn.disabled = false;
+    btn.textContent = TOMAIL_LABEL;
+  });
+}
+
 $('tomail').onclick = () => {
+  if (SCREEN === 'area'){ tomailArea(); return; }
   if (!CUR || MODE === 'walk' || !PICKED.size) return;
   const btn = $('tomail');
   const sel = selectionBody();
