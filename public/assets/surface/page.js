@@ -33,6 +33,7 @@
    Classes this file emits (style them freely, don't rename):
      .grp  section header   .st  street header   .row  address line
      .row.pick clickable    .row.on selected     .z  zip   .hint  intro text
+     .row.hist behind him   .hx  what he did      .hxact  exclude / restore
    ========================================================================= */
 
 mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -190,6 +191,18 @@ const pinMarkers = [];
 const CART = new Set();     // addresses already in the mailing
 let CART_ID = null;         // the draft's id, or null while there is no draft
 let CART_COST = 0;          // what printing it costs, in cents, as the server said
+/* The history of this cell. It stands above the group for the same reason the
+   mailing does: a house that was mailed is mailed whether or not the block it
+   sits on is open. Nothing in this file decides what is in here — both are
+   overwritten whole by the server's answer, and the flag beside it is the only
+   thing this page ever learns about a session. */
+const DONE = new Map();     // address -> {kind, occurred_at} of its last event
+let SIGNED_IN = false;      // from the same answer; it is what draws the button
+
+/* The word a row wears, by the event behind it. `restored` never reaches here —
+   the server drops an address whose history ends with one. */
+const HX_WORD = {sent:'mailed', walked:'walked', excluded:'excluded'};
+
 /* the timer of the armed clear button; null when it is at rest */
 let CLEAR_ARMED = null;
 /* a checkout request is in the air; a second Subscribe click is ignored */
@@ -266,6 +279,11 @@ restoreStart();
    snapshot and to no group, and the strip should be telling the truth by the
    time the first map tile lands. */
 cartLoad();
+
+/* And the history beside it, for the third time the same reason: it belongs to
+   the cell and not to a snapshot or a group. The order of the two calls does not
+   matter — each only fills a set of its own and redraws what is on screen. */
+historyLoad();
 
 function ok(r){ if (!r.ok) throw new Error(r.status); return r.json(); }
 function snap(file){ return DATA_BASE + STAMP + '/' + file; }
@@ -835,7 +853,10 @@ function nbFC(){
       addrs: JSON.stringify(b.addrs), n: b.addrs.length,
       /* green stands for a roof that is going to be mailed, so it waits until
          every door under it is picked — a half-picked duplex is not one */
-      sel: b.addrs.every(a => PICKED.has(a)) ? 1 : 0
+      sel: b.addrs.every(a => PICKED.has(a)) ? 1 : 0,
+      /* and grey for a roof he is done with, on the same whole-roof rule: one
+         door of a duplex in the history does not grey the building out */
+      hist: b.addrs.every(a => DONE.has(a)) ? 1 : 0
     }
   }))};
 }
@@ -962,8 +983,17 @@ function paintLayers(){
     }});
     map.addLayer({id:'nb-dots', type:'circle', source:'nb', paint:{
       'circle-radius': groundRadius(NB_DOT_M, NB_LAT),
-      'circle-color':['case',['==',['get','sel'],1],'#4ED08A','#5FB0E8'],
-      'circle-opacity':0.85,
+      /* Three readings of one dot, in this order and no other: what he is
+         picking now stands over what he did before. A house in the history that
+         he has picked anyway is green, because the pick is the newer statement
+         and the one he is about to act on. */
+      'circle-color':['case',
+        ['==',['get','sel'],1],'#4ED08A',
+        ['==',['get','hist'],1],'#8A97A6',
+        '#5FB0E8'],
+      'circle-opacity':['case',
+        ['all',['==',['get','hist'],1],['!=',['get','sel'],1]],0.6,
+        0.85],
       'circle-stroke-width':['case',['==',['get','sel'],1],2,1],
       'circle-stroke-color':['case',['==',['get','sel'],1],'#FFFFFF','#0F1720'],
       'circle-stroke-opacity':0.85
@@ -1146,6 +1176,13 @@ function autoPick(n){
   const want = Math.max(0, n);
   if (want > 0)
     NB_BUILDINGS
+      /* A roof he is already done with is not proposed again. Whole roofs only,
+         the same rule the picking itself runs on: a building with one address
+         in the history and one without goes in entire, because half a duplex is
+         not something the draft is able to offer. Nothing here stops him
+         picking such a house by hand — the list and the map still take the
+         click, and this is a draft, not a rule. */
+      .filter(b => !b.addrs.every(a => DONE.has(a)))
       .map((b, i) => ({b, i, d: nearestPermit(b)}))
       .sort((u, v) => u.d - v.d || u.i - v.i)
       .some(x => { x.b.addrs.forEach(a => PICKED.add(a)); return PICKED.size >= want; });
@@ -1216,16 +1253,23 @@ function render(){
       }
       h += '<div class="st'+(hot?' hot':'')+'">'+esc(s)+'<span>'+g.by[s].length+'</span></div>';
       g.by[s].forEach(n => {
-        /* two facts about one row, and they are independent: .on is what he is
-           picking here, .inmail is what the mailing already holds */
+        /* three facts about one row, and they are independent: .on is what he is
+           picking here, .inmail is what the mailing already holds, .hist is what
+           this address has behind it */
+        const done = DONE.get(n.a);
         h += '<div class="row pick'+(PICKED.has(n.a)?' on':'')+(CART.has(n.a)?' inmail':'')
-           + '" data-a="'+esc(n.a)+'">'
-           + '<b>'+esc(n.a)+'</b><span class="z">'+esc(n.zip)+'</span></div>';
+           + (done?' hist':'') + '" data-a="'+esc(n.a)+'">'
+           + '<b>'+esc(n.a)+'</b><span class="z">'+esc(n.zip)+'</span>'
+           + (done ? '<span class="hx">'+esc(HX_WORD[done.kind] || done.kind)+'</span>' : '')
+           + (SIGNED_IN ? histAction(n.a, done) : '')
+           + '</div>';
       });
     });
     pane.innerHTML = h;
     pane.querySelectorAll('.row.pick').forEach(r =>
       r.addEventListener('click', () => toggle(r.dataset.a)));
+    pane.querySelectorAll('.hxact').forEach(b =>
+      b.addEventListener('click', ev => histClick(ev, b)));
     const inp = pane.querySelector('#mailn-in');
     if (inp) inp.addEventListener('change', () => {
       MAILN = Math.max(0, Math.min(CUR.neighbours.length, parseInt(inp.value, 10) || 0));
@@ -1269,6 +1313,44 @@ function toggle(a){
   if (!CUR) return;
   const b = NB_OF_ADDR.get(a);
   toggleAddrs(b ? b.addrs : [a]);
+}
+
+/* The row's other gesture, and it belongs to one address rather than to a roof:
+   striking a house off is a statement about a door and about a postcard, not
+   about a building. Exclude is offered on every row, one already mailed
+   included — a man may want a house out of his drafts for a reason the history
+   does not know about. Restore is offered only where there is an exclusion to
+   undo; what was mailed cannot be un-mailed. */
+function histAction(a, done){
+  const back = !!done && done.kind === 'excluded';
+  return '<button type="button" class="hxact" data-a="'+esc(a)+'" data-kind="'
+       + (back ? 'restored' : 'excluded') + '">'
+       + (back ? 'Restore' : 'Exclude') + '</button>';
+}
+
+/* The button sits inside a row that picks, and the click must not reach it:
+   striking a house off is not the same gesture as choosing one. */
+function histClick(ev, btn){
+  ev.stopPropagation();
+  const a = btn.dataset.a, kind = btn.dataset.kind;
+  if (!a || !kind) return;
+  btn.disabled = true;
+  sayStrip('');
+  historyPost({city: CITY, trade: TRADE, address: a, kind: kind})
+    .then(() => {
+      if (kind !== 'excluded'){ sayStrip('Restored.'); return; }
+      /* An excluded house leaves the draft it is in, and the mailing too if it
+         already went over — otherwise the exclusion would be a mark on a row
+         still on its way to print. Nothing comes back on a restore: what he
+         wants picked, he picks. */
+      PICKED.delete(a);
+      pushNB();
+      if (MODE === 'mail') render();
+      if (!CART.has(a)){ sayStrip('Excluded.'); return; }
+      return cartPost({city: CITY, trade: TRADE, op:'remove', addresses:[a]})
+        .then(() => { sayStrip('Excluded.'); });
+    })
+    .catch(cartFailed);
 }
 
 /* ------------------------------------------------------------- the map key */
@@ -1530,6 +1612,46 @@ function cartPost(body){
     credentials:'same-origin', body: JSON.stringify(body)
   }).then(r => {
     if (r.status === 200) return r.json().then(j => { cartApply(j); return j; });
+    const err = new Error('HTTP ' + r.status);
+    err.status = r.status;
+    throw err;
+  });
+}
+
+/* The whole answer, taken as it stands — the same contract the cart has, and
+   the same reason for it: the server decides what the history of this cell is,
+   and this file only carries what it was told. */
+function historyApply(json){
+  DONE.clear();
+  const list = (json && json.addresses) || [];
+  list.forEach(e => { if (e && e.a) DONE.set(e.a, {kind: e.kind, occurred_at: e.occurred_at}); });
+  SIGNED_IN = !!(json && json.signed_in);
+  if (SCREEN === 'cluster'){
+    pushNB();                        // the roofs that go grey
+    if (MODE === 'mail') render();   // the word on the row and the button beside it
+  }
+}
+
+/* Asked once, at load, and never a sentence when it fails: a history that
+   cannot be read leaves the page saying what it said before — every house is
+   offered — which is the state this whole file was built on. */
+function historyLoad(){
+  fetch('/api/history?city=' + encodeURIComponent(CITY) + '&trade=' + encodeURIComponent(TRADE),
+        {credentials:'same-origin'})
+    .then(r => (r.status === 200 ? r.json() : null))
+    .then(j => { if (j) historyApply(j); })
+    .catch(() => {});
+}
+
+/* Every hand-made event goes through here, and every answer replaces the
+   history whole. The status code rides up on the error, as it does on the cart,
+   so the caller can say which refusal it was. */
+function historyPost(body){
+  return fetch('/api/history', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    credentials:'same-origin', body: JSON.stringify(body)
+  }).then(r => {
+    if (r.status === 200) return r.json().then(j => { historyApply(j); return j; });
     const err = new Error('HTTP ' + r.status);
     err.status = r.status;
     throw err;

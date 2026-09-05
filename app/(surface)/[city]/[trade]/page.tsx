@@ -144,6 +144,7 @@ export default function SurfacePage({
                   <span><i className="lg-permit"></i>roofing permit issued <span className="win"></span></span>
                   <span><i className="lg-open"></i>no qualifying roofing permit in <span className="yrs"></span> years of public records</span>
                   <span><i className="lg-sel"></i>picked for this mailing</span>
+                  <span><i className="lg-hist"></i>in your history: mailed, walked, or excluded. Not proposed again; you can still pick it.</span>
                   <span><i className="lg-x lg-recent"></i>reroofed since <span className="rsince"></span></span>
                   <span><i className="lg-x lg-done"></i>reroofed earlier, within <span className="yrs"></span> years</span>
                 </div>

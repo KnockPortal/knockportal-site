@@ -243,6 +243,8 @@ a.mapboxgl-ctrl-logo{margin:0;height:var(--logo-h)}
 .lg-permit{background:var(--orange);box-shadow:0 0 0 2px #fff}
 .lg-open{background:var(--blue)}
 .lg-sel{background:var(--green);box-shadow:0 0 0 2px #fff}
+/* the same grey and the same fading the map gives a roof already behind him */
+.legend i.lg-hist{background:#8A97A6;opacity:.6}
 /* city screen: one permit family, two weights, plus the box around a group */
 .lg-solo{background:var(--orange);opacity:.5;width:7px;height:7px}
 .lg-box{
@@ -332,6 +334,22 @@ a.mapboxgl-ctrl-logo{margin:0;height:var(--logo-h)}
   content:'\2709';flex:none;
   font:15px/1 system-ui,sans-serif;color:var(--mute);
 }
+/* Behind him already: mailed, walked, or struck off by hand. The address goes
+   quiet and says which, and the button beside it is the only way out or back —
+   the row itself still picks, because the history advises and does not forbid. */
+.row.pick.hist b{color:var(--mute)}
+.row .hx{
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mute);white-space:nowrap;
+}
+.row .hxact{
+  margin-left:8px;font:12px/1.2 inherit;padding:3px 8px;
+  border:1px solid var(--line);border-radius:5px;
+  background:transparent;color:var(--mute);cursor:pointer;flex:none;
+}
+.row .hxact:hover{color:var(--paper)}
+.row .hxact:disabled{opacity:.5;cursor:default}
+
 /* walk mode rows are compact: no checkbox column, tighter rhythm */
 body:has(#tab-walk[aria-selected=true]) .row{padding:9px 22px}
 
@@ -502,6 +520,9 @@ button.ghost:hover{border-color:#4A5D70}
   .row .z{color:#333}
   .row.pick::before{border-color:#999}
   .row.on::before{background:#000;border-color:#000}
+  /* the word stays on paper, the button does not: nothing is pressed on a
+     printed list */
+  .row .hxact{display:none}
   /* a printed list is carried down a street; the mailing is not on it, and two
      buttons that cannot be pressed on paper are noise */
   .strip{display:none}
