@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { SavedSelectionRow } from '@/lib/saved-selections'
+import type { SavedSelectionItem } from '@/lib/saved-selections'
 import { secondaryClass, technicalLine, type UiError } from '@/lib/ui-error'
 
 /**
@@ -10,7 +10,7 @@ import { secondaryClass, technicalLine, type UiError } from '@/lib/ui-error'
  * page already fetched this list under the caller's session, and a second
  * reader in the browser would be a second answer to the same question.
  */
-export default function SavedSelectionsList({ rows }: { rows: SavedSelectionRow[] }) {
+export default function SavedSelectionsList({ rows }: { rows: SavedSelectionItem[] }) {
   const router = useRouter()
 
   // At most one row is ever awaiting confirmation, so this is an id and not a
@@ -78,13 +78,16 @@ export default function SavedSelectionsList({ rows }: { rows: SavedSelectionRow[
                 <div className="min-w-0">
                   <p className="text-sm text-hail">{row.nhood || row.label || '—'}</p>
                   <p className="mt-1 font-mono text-[11px] leading-relaxed text-muted">
-                    {row.addresses.length === 1
+                    {row.address_count === 1
                       ? '1 address'
-                      : `${row.addresses.length} addresses`}
+                      : `${row.address_count} addresses`}
                     {' · '}
                     {`snapshot ${row.snapshot_stamp}`}
-                    {' · '}
-                    {new Date(row.created_at).toLocaleString()}
+                    {/* The date came formatted, and it came from the server; a
+                        row whose stamp did not parse loses the separator with
+                        it rather than trailing a dot into nothing. */}
+                    {row.created_label && ' · '}
+                    {row.created_label}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-3">

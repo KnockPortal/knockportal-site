@@ -3,8 +3,13 @@ import { supabaseSession } from '@/lib/supabase-session'
 import { ensureWorkspace } from '@/lib/workspace'
 import { GRANTING_STATUSES } from '@/lib/entitlements'
 import { RETURN_TO_RE, cellLabel } from '@/lib/billing'
-import { SAVED_SELECTION_COLUMNS, type SavedSelectionRow } from '@/lib/saved-selections'
+import {
+  SAVED_SELECTION_COLUMNS,
+  type SavedSelectionItem,
+  type SavedSelectionRow,
+} from '@/lib/saved-selections'
 import { PROFILE_COLUMNS, type PostcardProfileRow } from '@/lib/postcard-profile'
+import { formatLongDate } from '@/lib/postcard-line'
 import { describeError, secondaryClass, type UiError } from '@/lib/ui-error'
 import SignInPanel from '@/components/app/SignInPanel'
 import SignOutButton from '@/components/app/SignOutButton'
@@ -82,6 +87,28 @@ function subscriptionLine(row: EntitlementListRow): SubscriptionLine {
   }
 
   return { key: row.city + '/' + row.trade, text }
+}
+
+/**
+ * One saved selection, as the list draws it. Formatted here for the same reason
+ * the line above is: the date is formatted, and a date turned into words in the
+ * browser is not the same string as a date turned into words on the server —
+ * which is the whole of what React was complaining about. The form is
+ * formatLongDate, the one the mailing screen already prints an approval in;
+ * null when the stamp did not parse, and then the line says nothing rather than
+ * guessing.
+ */
+function savedItem(row: SavedSelectionRow): SavedSelectionItem {
+  return {
+    id: row.id,
+    city: row.city,
+    trade: row.trade,
+    snapshot_stamp: row.snapshot_stamp,
+    nhood: row.nhood,
+    label: row.label,
+    address_count: row.addresses.length,
+    created_label: formatLongDate(row.created_at),
+  }
 }
 
 function ErrorBlock({ error }: { error: UiError }) {
@@ -231,7 +258,7 @@ export default async function AppPage({
           {savedUiError ? (
             <ErrorBlock error={savedUiError} />
           ) : (
-            <SavedSelectionsList rows={rows ?? []} />
+            <SavedSelectionsList rows={(rows ?? []).map(savedItem)} />
           )}
         </section>
 
